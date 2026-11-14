@@ -416,7 +416,7 @@ FUNC build_status_packet_19b
     ldr.w r0, =meter_mode
     ldrb r0, [r0, #0x0]
     bl ui_clamp_view                        @ IMP-68: r0 = the clamp ratio code 1..4 while the display shows the clamp view (modes
-                                            @ 1..4, not in calibration mode, MEM view, REL percent or on the page CLP), else 0
+                                            @ 1..4, not in calibration mode, MEM view, REL percent or on the pages CLP, Sd, tHI, tLo), else 0
     orr r5, r5, r0, lsl #5                  @ byte 13 bits 7..5 (unused by v2.05): 0 off, 1..4 = 1, 10, 100, 1000 mV per A
     ldr.w r0, =ble_frame_b                  @ 0800C7B0
     strb r5, [r0, #0xd]                     @ 0800C7B4  ble_frame_b+13 = r5

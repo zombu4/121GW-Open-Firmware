@@ -17,9 +17,10 @@
 @ signs at every full commit (V off, A on, m on for mA), the point of a new range is ui_clamp_point.  The same mapping is
 @ written to the log file (log/csv.s) and, as the code, to bits 7..5 of byte 13 of the BLE status frame (ble/packet.s).
 @ When the view is shown (ui_clamp_view): the setting not off, a mode 1..4, outside calibration mode (0x2000808A), not in the
-@ MEM view (0x20007FE4), not on the page CLP (ui_hunt_view: its name is on the main display) and not while REL is shown in
-@ percent (ui_relpct_view comes first: a percent of the current is the percent of the voltage).  The pages that take the
-@ main digits (Sd, tHI, tLo, HUnt, CHIrP, CLP) and the loop and RTD views are drawn before it (fn_08016E08).
+@ MEM view (0x20007FE4), not on the page CLP (ui_hunt_view: its name is on the main display), not on the pages Sd, tHI and tLo
+@ (ui_stats_view, ui_mmt_view: the page is on the main digits and ui_relpct_mask leaves the units alone) and not while REL is
+@ shown in percent (ui_relpct_view comes first: a percent of the current is the percent of the voltage).  The pages that take
+@ the main digits (Sd, tHI, tLo, HUnt, CHIrP, CLP) and the loop and RTD views are drawn before it (fn_08016E08).
 @ The decimal point of the digits is one rule for the draw and the unit signs: ui_clamp_dpos (D / 10 of a REL difference
 @ beyond 99999 has one digit after the point fewer, so d' and the unit kind follow it).  ble/packet.s sends the code of
 @ ui_clamp_view, so byte 13 carries it only while the clamp view is shown.
@@ -133,8 +134,10 @@ ENDFUNC ui_clamp_dpos
 @ Out      : r0 = the ratio code 1..4 while the view is shown, else 0
 @ Clobbers : r1-r3, r12, flags (AAPCS)
 @ Context  : main only (ui_clamp_show, ui_clamp_kind, ui_clamp_point, ble/packet.s)
-@ RAM      : reads set_clamp_code, 0x2000808A, 0x20007FE4, set_item, and what ui_relpct_view reads
-@ Note     : the page CLP (set_item 48) is not the view: the main display shows its name there (ui_hunt_view)
+@ RAM      : reads set_clamp_code, 0x2000808A, 0x20007FE4, set_item, and what ui_stats_view, ui_mmt_view and ui_relpct_view read
+@ Note     : the page CLP (set_item 48) is not the view: the main display shows its name there (ui_hunt_view); nor are the
+@            pages Sd, tHI and tLo, so the BLE byte 13 carries the code only while the meter shows amperes (the log file, which
+@            asks ui_clamp_code, keeps A / mA there: it is the reading, not the display)
 @ -----------------------------------------------------------------------------
 FUNC ui_clamp_view
     push {r4, lr}
@@ -149,6 +152,10 @@ FUNC ui_clamp_view
     cbnz r0, 1f                             @ MEM view: the recalled record is shown as it was taken
     bl ui_hunt_view
     cbnz r0, 1f                             @ the page CLP (or HUnt, CHIrP) owns the main digits: no view
+    bl ui_stats_view
+    cbnz r0, 1f                             @ the page Sd owns the main digits (fn_08016E08, ui_relpct_mask: no unit signs): no view
+    bl ui_mmt_view
+    cbnz r0, 1f                             @ the page tHI / tLo owns the main digits: no view
     bl ui_relpct_view
     cbz r0, 2f                              @ not REL in percent: the view is shown
 1:  movs r4, #0

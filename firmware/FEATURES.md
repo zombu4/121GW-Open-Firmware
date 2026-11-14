@@ -809,8 +809,10 @@ changed, ARS 7: "r5/r6 are row-bound ... those rows may not change").
   volts.  REL shows the difference in amperes; HOLD keeps the amperes; REL in percent (`rEL-P`) shows the percent view, as in 2.3.  The
   pages that take the main digits (`Sd`, `tHI`, `tLo`, `HUnt`, `CHIrP`, `CLP`) and the MEM view and calibration mode show volts.  Other
   modes are not affected.
-- Bluetooth: byte 13 of the status frame 0xF2 carries the setting in bits 7..5 (0 off or a mode other than DCV, ACV, DCmV, ACmV;
-  1..4 = 1, 10, 100, 1000 mV per A), bits 4..0 as before; mode, range, counts, sign and overload bytes still describe the volts.  An
+- Bluetooth: byte 13 of the status frame 0xF2 carries the setting in bits 7..5 (0 off, a mode other than DCV, ACV, DCmV, ACmV, or
+  a display that shows no amperes (`Sd`, `tHI`, `tLo`, `HUnt`, `CHIrP`, `CLP`, the MEM view, calibration mode, REL in percent);
+  1..4 = 1, 10, 100, 1000 mV per A),
+  bits 4..0 as before; mode, range, counts, sign and overload bytes still describe the volts.  An
   app computes d' and the unit by the rule above (old apps ignore the bits and show correct volts).  Remote setting id 0x020 now
   carries the setting in bits 7..5 too (0..159; a PUT states the whole byte, so a value below 0x20 switches the clamp off; codes
   5..7 are refused), SHOW 48 reaches the page in the four modes.

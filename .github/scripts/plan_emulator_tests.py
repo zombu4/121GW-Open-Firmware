@@ -18,6 +18,8 @@ import sys
 CARD = ['firmware/src/sd/', 'firmware/src/ff16/', 'firmware/src/log/', 'emulator/tools/btft.py']
 BT = ['firmware/src/ble/', 'firmware/src/set/', 'emulator/scripts/test_bt_upload.py', 'emulator/tools/btft.py']
 FILES = ['emulator/scripts/test_bft_files.py'] + BT + CARD
+CLAMP = CARD + ['firmware/src/ui/', 'firmware/src/set/', 'firmware/src/ble/', 'firmware/src/log/', 'firmware/src/key/',
+                'firmware/src/lcd/', 'firmware/src/mode/', 'emulator/scripts/test_log_trigger.py']
 CAREFUL = ['emulator/scripts/test_careful.py'] + FILES
 VERSION = ['emulator/scripts/test_ble_version.py', 'firmware/src/ble/']
 
@@ -63,9 +65,10 @@ SCRIPTS = {
     # battery type page bAt, the low-battery limits, the power-on battery display and beep (IMP-67)
     'test_battery_type.py': ['firmware/src/pwr/', 'firmware/src/set/', 'firmware/src/ui/', 'firmware/src/bzb/',
                              'firmware/src/ble/', 'firmware/src/cal/bootwin.s', 'emulator/scripts/test_battery_trim.py'],
-    # current clamp mode: page CLP, the display in A / mA, frame byte 13, the log file (IMP-68); a card for the log file: CARD
-    'test_clamp.py': CARD + ['firmware/src/ui/', 'firmware/src/set/', 'firmware/src/ble/', 'firmware/src/log/',
-                              'firmware/src/key/', 'firmware/src/lcd/', 'firmware/src/mode/', 'emulator/scripts/test_log_trigger.py'],
+    # current clamp mode: page CLP, the display in A / mA, frame byte 13, the log file (IMP-68); a card for the log file: CARD;
+    # two jobs of its case groups (all in one job ran past the 2280 s limit on a hosted runner)
+    'test_clamp.py --cases matrix,hold_rel,other_modes,csv': CLAMP,
+    'test_clamp.py --cases page,rel_beyond,byte13_gates,lamp_test': CLAMP,
     'test_buzzer_off.py': ['firmware/src/bzb/', 'firmware/src/mres/', 'firmware/src/pwr/', 'firmware/src/set/'],
     'test_heartbeat.py': CAREFUL,
     'test_power_pairs.py': ['firmware/src/cal/', 'firmware/src/pwr/', 'firmware/src/ui/'],

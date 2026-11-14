@@ -1,6 +1,11 @@
 """Induced emulator test of the current clamp mode (production image, DESIGN.md 10 IMP-68, FEATURES.md 2.41; GitHub issue 39).
 
-    python -I emulator/scripts/test_clamp.py [image]      default firmware/build/EEVBlog.bin (production build)
+    python -I emulator/scripts/test_clamp.py [--cases a,b,...] [image]      default every case, firmware/build/EEVBlog.bin
+
+Cases (each boots its own emulator): matrix (T1), hold_rel (T2), other_modes (T3), page (T4), csv (T5), rel_beyond (T6),
+byte13_gates (T7, T9), lamp_test (T8).  CI runs two jobs of this script at the same time, one per case group
+(.github/scripts/plan_emulator_tests.py): all of them in one job ran past the 2280 s limit on a hosted runner (T1 11 min,
+T4 15 min, T5 7 min there).
 
 SETUP page CLP (item 48, DCV, ACV, DCmV and ACmV, after dSP), EEPROM 0x020 bits 7..5 = the ratio code 0..4 (0 off, 1..4 =
 1, 10, 100, 1000 mV per A).  With a ratio the main display shows the current of a clamp with a voltage output: the counts
@@ -21,7 +26,11 @@ not by the firmware's formula.
   T6 REL difference beyond 99999 (DCmV range 0 at 100 mV per A, REL on -53 mV then +53 mV and the mirror): D / 10 is drawn with
      one place fewer; the digits, the point and the unit signs agree (A, point at 4 places, m off)
   T7 byte 13 bits 7..5 are the code only while the display shows the clamp view: 0 in calibration mode, in the MEM view, with
-     REL shown as percent and on the page CLP; the code again when each is left
+     REL shown as percent, on the page CLP and on the pages Sd, tHI and tLo; the code again when each is left
+  T8 the lamp test of the power-on window (RANGE + MIN/MAX held at power-on) lights every segment with a ratio set, in DCV
+     and DCmV, as without one (ui_relpct_mask applies no view while ui_lamp_test is on)
+  T9 REL in percent left with a ratio: the % sign goes out and the A sign is on (the change from the percent view to the clamp
+     view requests the annunciator redraw)
 RUN LIMIT: 1 run of this script.
 The helpers are those of test_backlight_timer.py and test_log_trigger.py.
 """
@@ -40,6 +49,7 @@ from emu.fat32 import Volume  # noqa: E402
 ADDR_MODE, ADDR_RANGE, ADDR_DP = 0x2000803C, 0x2000803D, 0x2000803F
 ADDR_D = 0x20007D64                                  # displayed reading D (counts, after REL)
 ADDR_ITEM, ADDR_EDIT = 0x20008037, 0x2000806E
+ADDR_MM_STATE, ADDR_REL = 0x2000804E, 0x20008058   # minmax_state, rel_active
 EE_MV_MEMORY = 0x009                                 # the function of the mV position: 3 DCmV, 4 ACmV
 ITEM_DSP, ITEM_CLP, ITEM_LT, ITEM_REL = 24, 48, 27, 22
 SYMS = {}
@@ -422,6 +432,30 @@ def byte13_gates(image):
     T.check('page left: bits 7..5 = 2 again', b13 is not None and b13 >> 5 == 2, 'byte 13 %r' % b13)
     s = e.snapshot()
     T.check('no unmodelled access, no safety violation', s['unmodelled'] == 0 and not s['safety'])
+    # the pages Sd, tHI and tLo take the main digits and the units stay those of the voltage: no clamp view, bits 7..5 = 0
+    e = T.make(image, {0x20: 0x40})
+    e.command({'dial': 2})
+    e.advance(3.0)
+    T.long_press(e, 'PEAK')                          # Bluetooth on: the status frames
+    e.command({'input': {'kind': 'V', 'value': 1.2, 'ac': False}})
+    e.advance(4.0)
+    T.press(e, 'MINMAX', gap=0.5)
+    T.check('MIN/MAX on, page n', T.rd(e, ADDR_MM_STATE) != 0 and T.rd(e, ADDR_ITEM) == 32,
+            'state %d item %d' % (T.rd(e, ADDR_MM_STATE), T.rd(e, ADDR_ITEM)))
+    b13 = frame_byte13(e, 1.3)
+    T.check('MIN/MAX on, page n (the reading shows amperes): bits 7..5 = 2', b13 is not None and b13 >> 5 == 2, 'byte 13 %r' % b13)
+    for name, item in (('Sd', 33), ('tHI', 34), ('tLo', 35)):
+        T.press(e, 'SETUP', gap=0.6)
+        b13 = frame_byte13(e, 1.3)
+        T.check('page %s (item %d): bits 7..5 = 0' % (name, T.rd(e, ADDR_ITEM)), T.rd(e, ADDR_ITEM) == item and b13 is not None
+                and b13 >> 5 == 0, 'item %d byte 13 %r' % (T.rd(e, ADDR_ITEM), b13))
+    T.press(e, 'SETUP', gap=0.6)
+    T.press(e, 'SETUP', gap=0.6)
+    b13 = frame_byte13(e, 1.3)
+    T.check('pages left (item %d), MIN/MAX still on: bits 7..5 = 2 again' % T.rd(e, ADDR_ITEM),
+            T.rd(e, ADDR_ITEM) == 0 and T.rd(e, ADDR_MM_STATE) != 0 and b13 is not None and b13 >> 5 == 2, 'byte 13 %r' % b13)
+    s = e.snapshot()
+    T.check('no unmodelled access, no safety violation', s['unmodelled'] == 0 and not s['safety'])
     e = T.make(image, {0x20: 0x41})                  # REL in percent (bit 0) and the ratio 10 mV per A
     e.command({'dial': 2})
     e.advance(3.0)
@@ -437,23 +471,66 @@ def byte13_gates(image):
     w0 = e.snapshot()['lcd'][0]
     T.check('REL as percent (the % sign is on): bits 7..5 = 0', (w0 >> 17 & 1) == 1 and b13 is not None and b13 >> 5 == 0,
             'byte 13 %r %%%d' % (b13, w0 >> 17 & 1))
+    print('T9 REL in percent left with a ratio: no % next to the amperes')
+    T.press(e, 'REL', gap=1.0)                       # REL off: the view changes from percent to the clamp view
+    e.command({'input': {'kind': 'V', 'value': 1.5, 'ac': False}})
+    e.advance(4.0)
+    T.check('REL off: the reading is the voltage again', T.rd(e, ADDR_REL) == 0, 'rel_active %d' % T.rd(e, ADDR_REL))
+    check_view(e, 'REL off: 1.5 V at 10 mV/A = 150 A', 1, 2)
+    w0 = e.snapshot()['lcd'][0]
+    T.check('REL off: the % sign is out', (w0 >> 17 & 1) == 0, 'w0 0x%08X' % w0)
+    b13 = frame_byte13(e, 1.3)
+    T.check('REL off: bits 7..5 = 2 again', b13 is not None and b13 >> 5 == 2, 'byte 13 %r' % b13)
+    s = e.snapshot()
+    T.check('no unmodelled access, no safety violation', s['unmodelled'] == 0 and not s['safety'])
 
 
-def run_tests(image):
+def lamp_test(image):
+    print('T8 the lamp test of the power-on window with a ratio')
+    lamp = T.symbol(os.path.join(os.path.dirname(os.path.abspath(image)), '121gw.map'), 'ui_lamp_test')
+    for name, dial, patch, code in (('DCV', 2, {}, 2), ('DCmV', 3, {EE_MV_MEMORY: 3}, 4), ('DCV, no ratio', 2, {}, 0)):
+        e = T.make(image, {**patch, 0x20: code << 5})
+        for k in ('RANGE', 'MINMAX'):
+            e.command({'key': k, 'down': True})
+        e.command({'dial': dial})
+        e.advance(1.0)
+        w = e.snapshot()['lcd']
+        full = all(w[i] == 0xFFFFFFFF for i in (0, 2, 4, 6)) and all(w[i] & 0xFFF == 0xFFF for i in (1, 3, 5, 7))
+        T.check('%s, ratio code %d: lamp test on (ui_lamp_test = %d), every segment lit' % (name, code, T.rd(e, lamp)),
+                T.rd(e, lamp) == 1 and full, 'lcd %s' % ' '.join('%08X' % x for x in w))
+        for k in ('RANGE', 'MINMAX'):
+            e.command({'key': k, 'down': False})
+        e.advance(0.2)
+        w = e.snapshot()['lcd']
+        T.check('%s, ratio code %d: still every segment until the window closes' % (name, code),
+                all(w[i] == 0xFFFFFFFF for i in (0, 2, 4, 6)), 'lcd %s' % ' '.join('%08X' % x for x in w))
+        e.advance(3.0)
+        main, v, a, m = look(e)
+        T.check('%s, ratio code %d: the window closed, the reading is shown (lamp test off, %s)' % (name, code, 'A' if code else 'V'),
+                T.rd(e, lamp) == 0 and (a == 1) == (code != 0) and (v == 1) == (code == 0), 'main %r V%d A%d m%d' % (main, v, a, m))
+
+
+CASES = {'matrix': matrix, 'hold_rel': hold_rel, 'other_modes': other_modes, 'page': page, 'csv': csv,
+         'rel_beyond': rel_beyond, 'byte13_gates': byte13_gates, 'lamp_test': lamp_test}
+
+
+def run_tests(image, names=tuple(CASES)):
     mp = os.path.join(os.path.dirname(os.path.abspath(image)), '121gw.map')
     SYMS['set_clamp_code'] = T.symbol(mp, 'set_clamp_code')
-    matrix(image)
-    hold_rel(image)
-    other_modes(image)
-    page(image)
-    csv(image)
-    rel_beyond(image)
-    byte13_gates(image)
+    for n in names:
+        CASES[n](image)
 
 
 def main(argv):
+    names = list(CASES)
+    if argv and argv[0] == '--cases':
+        names = argv[1].split(',')
+        argv = argv[2:]
+        unknown = [n for n in names if n not in CASES]
+        if unknown:
+            raise SystemExit('unknown case(s) %s; cases: %s' % (', '.join(unknown), ', '.join(CASES)))
     image = argv[0] if argv else os.path.join(T.ROOT, 'firmware', 'build', 'EEVBlog.bin')
-    run_tests(image)
+    run_tests(image, names)
     print('RESULT', ('FAIL: ' + ', '.join(T.fails)) if T.fails else 'ALL PASS', flush=True)
     return 1 if T.fails else 0
 

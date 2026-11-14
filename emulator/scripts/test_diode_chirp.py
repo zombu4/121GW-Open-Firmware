@@ -17,7 +17,8 @@ v2.05's chirp lockout (100 TIM2 ticks, about 1 s), so each phase shows what its 
   C2 on (0x02C = 1): one beep per contact (diode, diode again, diode after the short), none at the start with open
      leads, on lifting, on the drift, on the bounce or on the short (the short-circuit tone is separate, IMP-04)
   C3 the page: in DIODE, SETUP from dSP goes to CHIrP ("CHIrP" on the sub display, "oFF" on the main display); REL
-     switches to on, long SETUP saves EEPROM 0x02C = 1 and no other byte; in DCV the walk goes from dSP to Lt (27; the page CL is on the meter walk, IMP-52)
+     switches to on, long SETUP saves EEPROM 0x02C = 1 and no other byte; in DCV the walk goes from dSP to CLP (48, the current clamp page of DCV, IMP-68), not CHIrP (the page CL is on the meter
+     walk, IMP-52)
 RUN LIMIT: 1 run of this script (3 boots).
 The helpers are those of test_backlight_timer.py.
 """
@@ -34,7 +35,7 @@ from unicorn import UC_HOOK_CODE  # noqa: E402
 ADDR_MODE, ADDR_ITEM = 0x2000803C, 0x20008037
 WARMUP = 4.0                                         # s with open leads in DIODE before the first phase
 EE_DIAL5_MODE, EE_CHIRP = 0x0B, 0x02C
-ITEM_DSP, ITEM_LT, ITEM_CHIRP = 24, 27, 42
+ITEM_DSP, ITEM_LT, ITEM_CHIRP, ITEM_CLP = 24, 27, 42, 48
 PHASES = [('start, leads open', {'kind': 'open'}),
           ('0.60 V diode', {'kind': 'diode', 'value': 0.60}),
           ('lifted', {'kind': 'open'}),
@@ -131,7 +132,7 @@ def run_tests(image):
     T.press(e, 'SETUP', gap=0.6)
     if T.rd(e, ADDR_ITEM) == ITEM_DSP:               # the press showed dSP: the next one steps
         T.press(e, 'SETUP', gap=0.6)
-    T.check('C3: DCV: dSP -> Lt (no CHIrP outside DIODE)', T.rd(e, ADDR_ITEM) == ITEM_LT, 'item %d' % T.rd(e, ADDR_ITEM))
+    T.check('C3: DCV: dSP -> CLP (no CHIrP outside DIODE)', T.rd(e, ADDR_ITEM) == ITEM_CLP, 'item %d' % T.rd(e, ADDR_ITEM))
     s = e.snapshot()
     T.check('no unmodelled access, no safety violation', s['unmodelled'] == 0 and not s['safety'],
             'unmodelled %r safety %r' % (s['unmodelled'], s['safety']))

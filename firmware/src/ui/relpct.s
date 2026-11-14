@@ -206,10 +206,14 @@ ENDFUNC ui_rp_text_prep
 @ In/Out   : - / -
 @ Clobbers : r0-r3, flags
 @ Context  : main only
-@ RAM      : reads and writes lcd_shadow words 0, 2, 4, 6, ui_relpct_last; reads peak_hold, 0x200080AB; writes 0x20008060,
-@            0x20008061 when the view ends
-@ Note     : IMP-68: the current clamp view of DCV, ACV, DCmV and ACmV (ui_clamp_kind, tried last) turns V off and A on, and
-@            the m prefix on for milliamperes (off for amperes), nothing else; its mode signs and the HV sign stay.
+@ RAM      : reads and writes lcd_shadow words 0, 2, 4, 6, ui_relpct_last; reads peak_hold, 0x200080AB, ui_lamp_test; writes
+@            0x20008060, 0x20008061 when the view ends (or changes from percent / RTD to the clamp view)
+@ Note     : While the all-segments test of the power-on window is on (ui_lamp_test) no view is applied, whatever the mode:
+@            the lamp test lights every segment (a view would clear the units it lights).
+@            IMP-68: the current clamp view of DCV, ACV, DCmV and ACmV (ui_clamp_kind, tried last) turns V off and A on, and
+@            the m prefix on for milliamperes (off for amperes), nothing else; its mode signs and the HV sign stay.  Coming
+@            from the percent or RTD view (REL percent switched off) the clamp view does not clear the % that view lit, so
+@            that change requests the same redraw of the annunciators and the unit prefix as the end of a view.
 @            The percent views clear the unit and prefix signs and light %; the RTD view clears them (% included) and
 @            lights degC (0x200080AB non-zero) or degF (0), the signs of TEMP (fn_0801A3A4).  The views are tried in the
 @            order of fn_08016E08, so the mask belongs to the view that is drawn; the pages Sd, tHI, tLo, HUnt (IMP-45) and CHIrP
@@ -217,6 +221,9 @@ ENDFUNC ui_rp_text_prep
 @ -----------------------------------------------------------------------------
 FUNC ui_relpct_mask
     push {r4, lr}
+    ldr r0, =ui_lamp_test
+    ldrb r0, [r0]
+    cbnz r0, 0f                             @ all-segments test of the power-on window (fn_0801A89C): every segment stays lit, no view
     bl ui_stats_view
     cbnz r0, 0f                             @ page Sd on the main digits (IMP-14): the reading's own unit, no view
     bl ui_mmt_view
@@ -252,6 +259,15 @@ FUNC ui_relpct_mask
     blo .Lrm_not_clamp
     @ IMP-68: the clamp view (kind 3 amperes, 4 milliamperes) changes three signs only: V off, A on, m on for mA; the
     @ AC / DC and status signs, the HV sign and the bargraph labels stay as the voltage mode has them
+    subs r2, r2, #1                         @ r2 = the view of the last commit: 1 percent or 2 RTD (REL percent just left for the
+    cmp r2, #1                              @ clamp view): the % (and the prefixes) that view lit are not the clamp view's, so
+    bhi .Lrm_clamp_signs                    @ request the redraw of every annunciator and of the unit prefix as the end of a view
+    movs r0, #1                             @ does (the redraw is served before the next commit, which applies this mask again)
+    ldr r1, =v_20008060
+    strb r0, [r1]
+    ldr r1, =v_20008061
+    strb r0, [r1]
+.Lrm_clamp_signs:
     ldr r0, [r3, #16]
     bic r0, r0, #UI_RP_W4_V                 @ V off
     str r0, [r3, #16]
