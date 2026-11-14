@@ -92,15 +92,16 @@ def _main(f, mode, rng):
     dp, unit = rows[rng]
     if mode == 5:
         unit = '°C' if f[6] & 0x20 else '°F' if f[6] & 0x10 else ''
+    ovl = bool(f[6] & 0x80)                             # overload: the meter shows " OFL " (M7); value bytes are stale
+    if mag > 99999 and not ovl:                         # only through REL: the display shows trunc(D/10), dp - 1 (M6);
+        mag, dp = mag // 10, max(dp - 1, 0)             # first, as the clamp view moves this point (ui_clamp_dpos)
     code = clamp_code(f, mode)
     if code:
         dp, unit = clamp_point(dp, mode, code)
-    if f[6] & 0x80:                                     # overload: the meter shows " OFL " (M7); value bytes are stale
+    if ovl:
         return 'OFL', None, unit, dp
     if dp is None:                                      # clamp: the current does not fit the five digits, the meter
         return 'OFL', None, unit, None                  # shows its overload text
-    if mag > 99999:                                     # only through REL: the display shows trunc(D/10), dp - 1 (M6)
-        mag, dp = mag // 10, max(dp - 1, 0)
     text = _fixed(mag, dp)
     value = mag / 10 ** dp
     if neg:
@@ -217,6 +218,6 @@ def decode(f, t):
     text, value, unit, dp = _main(f, mode, rng)
     label, sub_text, sub_unit = _sub(f, mode)
     return {'t': t, 'mode': mode, 'mode_name': MODES[mode] if mode < len(MODES) else 'mode %d' % mode, 'range': rng,
-            'text': text if text is not None else '-----', 'value': value, 'unit': unit, 'dp': dp,
+            'text': text if text is not None else '-----', 'value': value, 'unit': unit, 'dp': dp, 'clamp': clamp_code(f, mode),
             'overload': text == 'OFL', 'sub_label': label, 'sub_text': sub_text, 'sub_unit': sub_unit,
             'symbols': _symbols(f), 'bar': _bar(f), 'raw': f.hex()}

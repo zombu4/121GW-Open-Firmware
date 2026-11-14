@@ -290,8 +290,9 @@ class Settings:
         raw = self.raw_all()
         if s.wire not in raw:
             raise card.CardError('the meter does not report %s' % s.code)
-        # the firmware refuses a clamp code above 4 (F-1.35) or any bit above bit 4 (older): checked before the merge
-        if s.wire == B20 and (raw[B20] >> 5 > (4 if self.clamp else 0) or
+        # the firmware refuses a clamp code above 4 (F-1.35) or any bit above bit 4 (older): checked before the merge,
+        # except for CLP itself, whose merge replaces the code
+        if s.wire == B20 and ((s.id != CLAMP_ID and raw[B20] >> 5 > (4 if self.clamp else 0)) or
                               (s.code != 'tr' and (raw[B20] >> 1) & 3 == 3)):
             raise card.CardError('%s: the meter reports the value 0x%02X of its shared setting, which it would refuse; '
                                  'set the logging trigger (tr) first' % (s.code, raw[B20]))

@@ -4,7 +4,7 @@ would follow the point, OFL when the current does not fit the five digits; the M
 the setting id 0x020 and only listed for F-1.35 and newer."""
 import unittest
 
-from support import settings
+from support import FakeMeter, make_client, settings
 from meter121 import display
 
 
@@ -69,6 +69,19 @@ class ClampDecode(unittest.TestCase):
         r = display.decode(frame(9, 1, 4701, 2), 0)                                 # OHM
         self.assertEqual(r['unit'], 'Ω')
 
+    def test_rel_past_99999_moves_the_point_first(self):
+        # the meter draws trunc(D/10) one place fewer, then the clamp view moves that point (ui_clamp_dpos)
+        self.assertEqual(self.shown(3, 0, 106000, 3), ('1.0600', 'A', 1.06))         # DCmV range 0 at 100 mV/A
+        r = display.decode(frame(1, 1, 106000, 1), 0)                                # DCV range 1 at 1 mV/A: 106000 A
+        self.assertEqual((r['text'], r['value'], r['overload']), ('OFL', None, True))
+        r = display.decode(frame(1, 1, 123456, 1), 0)
+        self.assertEqual(r['text'], 'OFL')
+
+    def test_another_ratio_is_another_statistics_key(self):
+        a, b = display.decode(frame(1, 0, 2534, 1), 0), display.decode(frame(1, 0, 2534, 2), 0)
+        self.assertEqual((a['unit'], a['range'], b['unit'], b['range']), ('A', 0, 'A', 0))
+        self.assertNotEqual(a['clamp'], b['clamp'])
+
     def test_codes_5_to_7_are_off(self):
         self.assertEqual(self.shown(1, 0, 2534, 5), ('0.2534', 'V', 0.2534))
         self.assertEqual(self.shown(1, 0, 2534, 7), ('0.2534', 'V', 0.2534))
@@ -85,6 +98,13 @@ class ClampSetting(unittest.TestCase):
         self.assertEqual(new, raw | (3 << 5))               # the other bits stay
         self.assertEqual(settings.field(s, new), 3)
         self.assertEqual(settings.field(settings.BY_ID[0x420], new), 1)
+
+    def test_clp_repairs_its_own_code(self):
+        e = {s.wire: 0 for s in settings.TABLE}
+        e.update({0x01A: 14, 0x022: 1, 0x02A: 100, 0x020: 0xA0})    # 0x020 code 5: refused, CLP may still set a valid one
+        m = FakeMeter(eeprom=e)
+        settings.Settings(make_client(m)).put(0x520, 0)
+        self.assertEqual(m.eeprom[0x020], 0x00)
 
     def test_row_only_for_f135_and_newer(self):
         ids = lambda **kw: [r.id for r in settings.Settings(None, **kw).rows()]

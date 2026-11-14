@@ -57,7 +57,7 @@ class Session:
             self.frames += 1
             self.last = reading
             v = reading.get('value')
-            key = (reading.get('mode'), reading.get('unit'), reading.get('range'))
+            key = (reading.get('mode'), reading.get('unit'), reading.get('range'), reading.get('clamp'))   # another clamp ratio restarts too
             if v is not None:
                 self.stats.add(key, v)
                 self.stats_dp = reading.get('dp')
@@ -110,6 +110,6 @@ class Session:
             pts = [(t, v if k == key else None) for t, v, k in self.trend if since is None or t > since]
             unit = key[1] if key else None              # the unit of the readings in the statistics and the trend
             return {'last': self.last, 'frames': self.frames, 'stats': self.stats.snapshot(), 'stats_unit': unit,
-                    'stats_key': '%s/%s/%s' % key if key else None, 'stats_dp': self.stats_dp, 'trend': pts,
+                    'stats_key': '%s/%s/%s/%s' % key if key else None, 'stats_dp': self.stats_dp, 'trend': pts,
                     'recording': self._writer is not None, 'rec_path': self.rec_path, 'rec_rows': self.rec_rows,
                     'rec_start': self.rec_start}
