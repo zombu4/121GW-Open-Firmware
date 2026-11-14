@@ -259,7 +259,7 @@ ENDFUNC api_where
 @ -----------------------------------------------------------------------------
 @ api_valid - is the item a page SHOW may look for
 @ In       : r0 = item
-@ Out      : r0 = 1 yes (0 .. 12 or 20 .. 47), 0 no (13 .. 19, 48 and above: no such page; 100 the MEM view)
+@ Out      : r0 = 1 yes (0 .. 12 or 20 .. 48), 0 no (13 .. 19, 49 and above: no such page; 100 the MEM view)
 @ Clobbers : flags
 @ -----------------------------------------------------------------------------
 LFUNC api_valid
@@ -267,7 +267,7 @@ LFUNC api_valid
     bls 1f
     cmp r0, #20
     blo 2f
-    cmp r0, #47
+    cmp r0, #48                             @ IMP-68: the page CLP (item 48, DCV, ACV, DCmV, ACmV)
     bhi 2f
 1:  movs r0, #1
     bx lr

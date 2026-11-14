@@ -539,9 +539,9 @@ ENDFUNC fn_08011384
 @ Note     : The call of fn_08011394 (item 10 in BEEP) now accepts the codes 0..17 (IMP-05, IMP-64).
 @ Note     : Production image only: item 20 (bL, set_bl_load), 21 (bt, set_bt_load), 22 (rEL, set_relp_load), 23 (tc,
 @            set_tc_load), 24 (dSP, set_dsp_load), 25 (CL, set_relp_load), 26 (bH, set_bh_load), 30 (tr, set_relp_load),
-@            31 (Ch, set_ch_load), 37 (LP, set_lp_load), 38 (Pt, set_rtd_load), 41 (HUnt, set_relp_load), 42 (CHIrP, set_chirp_load), 1 (battery trim, set_btrim_load), 47 (bAt, set_bat_load) and 11 of ACV (dBm reference,
-@            set_dbm_load) are re-read from the EEPROM in the same way (IMP-07, IMP-09, IMP-11, IMP-10, IMP-12, IMP-13,
-@            IMP-16, IMP-21, IMP-24, IMP-25, IMP-45, IMP-51, IMP-27, IMP-67, IMP-08).
+@            31 (Ch, set_ch_load), 37 (LP, set_lp_load), 38 (Pt, set_rtd_load), 41 (HUnt, set_relp_load), 42 (CHIrP, set_chirp_load), 1 (battery trim, set_btrim_load), 47 (bAt, set_bat_load), 48 (CLP, set_relp_load) and 11 of ACV (dBm
+@            reference, set_dbm_load) are re-read from the EEPROM in the same way (IMP-07, IMP-09, IMP-11, IMP-10, IMP-12,
+@            IMP-13, IMP-16, IMP-21, IMP-24, IMP-25, IMP-45, IMP-51, IMP-27, IMP-67, IMP-68, IMP-08).
 @ -----------------------------------------------------------------------------
 FUNC fn_0800D190
     push {r7, lr}                           @ 0800D190
@@ -710,7 +710,12 @@ FUNC fn_0800D190
     bl set_bat_load
     b .L0800D280
 .Lto_not_bat:
-    cmp r0, #30                             @ IMP-21: the same for the page tr (item 30; byte 0x020)
+    cmp r0, #48                             @ IMP-68: the same for the page CLP (item 48; byte 0x020, bits 7..5, as rEL)
+    bne .Lto_not_clp
+    bl set_relp_load
+    b .L0800D280
+.Lto_not_clp:
+    cmp r0, #30                            @ IMP-21: the same for the page tr (item 30; byte 0x020)
     bne 1f
     bl set_relp_load
     b .L0800D280

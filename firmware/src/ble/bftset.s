@@ -43,7 +43,8 @@
 @     0x01B VA burden "bd"        0..1    set_va_bd_edit     -                        fn_08016190      (page 11; its save
 @                                                            copies the edit buffer to set_va_bd)
 @     0x01E buzzer setting        0..2    set_buzzer_on      -                        fn_08015A74      (page 3)
-@     0x020 bit field             0..31   set_relp, log_trig, set_clk12, set_hunt_on, then set_b20_store (below)
+@     0x020 bit field             0..159  set_relp, log_trig, set_clk12, set_hunt_on, set_clamp_code, then set_b20_store
+@                                         (below; 0x20 * clamp code 0..4 is part of the value, IMP-68)
 @     0x021 continuity hold       0..3    set_bh_code        -                        set_bh_edit      (page bH)
 @     0x022 logging change thr.   1..255  log_ch_thr         -                        set_ch_edit      (page Ch)
 @     0x023 battery type          0..1    set_bat_nimh       -                        set_bat_edit     (page bAt, IMP-67;
@@ -60,11 +61,13 @@
 @                                                            tenths of an ohm)
 @     0x02D continuity threshold  1..500  set_ut_ohm (u16)   -                        set_ut_edit      (page th, IMP-64;
 @           of the user codes                                ohm; two-byte, the last entry; stored in 0x02D..0x02E)
-@ 0x020 holds four settings: bit 0 the REL view (page rEL), bits 2..1 the logging trigger 0..2 (page tr; 3 is refused),
-@ bit 3 the clock (page CL), bit 4 the capacitance anti-hunting (page HUnt, IMP-45; 1 = on); bits 7..5 must be 0.  PUT sets
-@ the four RAM variables (switching the anti-hunting off also clears its state, as the page does) and calls set_b20_store
-@ with the mask 0x1F, which changes bits 4..0 of the byte and keeps bits 7..5 (EEPROM_MAP.md 4.1); the pages call it with
-@ the mask of their own bits, one page at a time.
+@ 0x020 holds five settings: bit 0 the REL view (page rEL), bits 2..1 the logging trigger 0..2 (page tr; 3 is refused),
+@ bit 3 the clock (page CL), bit 4 the capacitance anti-hunting (page HUnt, IMP-45; 1 = on), bits 7..5 the current clamp
+@ ratio 0..4 (page CLP, IMP-68: 0 off, 1..4 = 1, 10, 100, 1000 mV per A; 5..7 are refused).  PUT checks the trigger and
+@ the clamp code first, then sets the five RAM variables (switching the anti-hunting off also clears its state, as the
+@ page does) and calls set_b20_store with the mask 0xFF, which writes the whole byte (EEPROM_MAP.md 4.1); the pages call
+@ it with the mask of their own bits, one page at a time.  A PUT of 0x020 therefore states the clamp ratio too: a value
+@ below 0x20 switches the clamp off (GET returns the byte with the ratio in bits 7..5).
 @ The save routines of the pages do not return the result of the EEPROM write (set_nvm_store's status is dropped by the
 @ page code, as in v2.05): PUT answers the value in effect in RAM; a write the NVM layer refused is not reported.
 @     0x018 logging interval      0..999  set_interval_edit (u16) -               fn_08015AC0      (page In, IMP-65;
@@ -128,7 +131,7 @@ bfs_tab:
     BFS_ENTRY 0x01A, 10,  17,  0,   0,             0, lcd_contrast,      lcd_contrast,     0,               fn_08015B54
     BFS_ENTRY 0x01B, 0,   1,   0,   0,             0, bfs_va_bd,         bfs_va_bd_edit,   0,               fn_08016190
     BFS_ENTRY 0x01E, 0,   2,   0,   0,             0, bfs_buzzer_on,     bfs_buzzer_on,    0,               fn_08015A74   @ 2 qUiEt (IMP-54)
-    BFS_ENTRY 0x020, 0,   31,  0,   0,             BFS_KIND_B20, 0,      0,                0,               0
+    BFS_ENTRY 0x020, 0,   159, 0,   0,             BFS_KIND_B20, 0,      0,                0,               0   @ 159 = 0x9F: clamp code 4 and bits 4..0
     BFS_ENTRY 0x021, 0,   3,   0,   0,             0, set_bh_code,       set_bh_code,      0,               set_bh_edit
     BFS_ENTRY 0x022, 1,   255, 0,   0,             0, log_ch_thr,        log_ch_thr,       0,               set_ch_edit
     BFS_ENTRY 0x023, 0,   1,   0,   0,             0, set_bat_nimh,      set_bat_nimh,     0,               set_bat_edit
@@ -190,6 +193,10 @@ LFUNC bfs_value
     ldrb r2, [r1]
     and r2, r2, #1
     orr r0, r0, r2, lsl #4                  @ bit 4: anti-hunting (IMP-45)
+    ldr r1, =set_clamp_code
+    ldrb r2, [r1]
+    and r2, r2, #7
+    orr r0, r0, r2, lsl #5                  @ bits 7..5: current clamp ratio (IMP-68)
     bx lr
 ENDFUNC bfs_value
 
@@ -353,11 +360,12 @@ FUNC bfs_put
     blx r3
     b .Lpu_done
 .Lpu_b20:
-    tst r6, #0xE0
-    bne .Lpu_arg                            @ bits 7..5 are not settings
+    ubfx r0, r6, #5, #3
+    cmp r0, #4
+    bhi .Lpu_arg                            @ bits 7..5 are the clamp ratio code 0..4 (IMP-68); 5..7 do not exist
     ubfx r0, r6, #1, #2
     cmp r0, #2
-    bhi .Lpu_arg                            @ trigger 3 does not exist
+    bhi .Lpu_arg                            @ trigger 3 does not exist (both checks come before any variable is set)
     ldr r1, =log_trig
     strb r0, [r1]                           @ bits 2..1: logging trigger
     and r0, r6, #1
@@ -371,7 +379,10 @@ FUNC bfs_put
     strb r0, [r1]                           @ bit 4: capacitance anti-hunting (IMP-45)
     cbnz r0, 5f
     bl ah_reset                             @ off: no lock and no counted timeout may remain (the page does the same)
-5:  movs r0, #0x1F                          @ mask: bits 4..0
+5:  ubfx r0, r6, #5, #3
+    ldr r1, =set_clamp_code
+    strb r0, [r1]                           @ bits 7..5: current clamp ratio (IMP-68; r0 = 0..4, checked above)
+    movs r0, #0xFF                          @ mask: bits 7..0 (the five settings of the byte, set above)
     mov r1, r6
     bl set_b20_store                        @ read-modify-write of those bits through set_nvm_store
 .Lpu_done:

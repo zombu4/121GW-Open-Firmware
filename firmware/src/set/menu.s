@@ -4,7 +4,7 @@
 @ SET module.  GitHub issue 24: the SETUP walk had grown to about twenty pages.  It is split in two (set/setup.s
 @ fn_08015410):
 @   measurement walk (SETUP short): item 0, the function's pages 10..12, rEL, tc, dSP, the function page (bH, LP, Pt,
-@     HUnt, CHIrP), the limit test Lt, Lo, HI (verdict), the logging pages tr (Ch) and In (item 9), the MIN/MAX pages
+@     HUnt, CHIrP, CLP (item 48, IMP-68)), the limit test Lt, Lo, HI (verdict), the logging pages tr (Ch) and In (item 9), the MIN/MAX pages
 @     n, Sd, tHI, tLo, then the page SEt (item 43) and item 0 again;
 @   meter walk: items 1..8 (battery trim, bAt (item 47, IMP-67), APO, buzzer, contrast, year, month and day, hour and
 @     minute, ID), bL, bt, Ld, Fr, CL, then item 0.

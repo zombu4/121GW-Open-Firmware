@@ -86,6 +86,8 @@ ENDFUNC fn_080170AC
 @            position is stored but neither drawn nor committed: v2.05 applies no mode inside the window, and drawing the
 @            point would show it inside that screen ("U.-205", "5.DCAL").  ui_bootwin_gate draws it when the main digits
 @            are handed to the reading, and every later value draw sets it from 0x2000803F.
+@            IMP-68: while the current clamp view is shown (ui/clamp.s) the point drawn is the point of the current
+@            (ui_clamp_point); 0x2000803F keeps the code of the voltage range.
 @ -----------------------------------------------------------------------------
 FUNC fn_080171FA
     @ d = decimal_position_for_mode_range(mode, range) -> 0x2000803F, then set the main decimal point (fn_0801717E) and commit
@@ -102,6 +104,7 @@ FUNC fn_080171FA
     cbnz r0, 1f                              @ position stored, not drawn (see Deviation)
     ldr r0, =v_2000803F                      @ 08017212 &main decimal-point position
     ldrb r0, [r0, #0]                        @ 08017216
+    bl ui_clamp_point                        @ IMP-68: the point of the current while the clamp view is shown, else the same code
     bl fn_0801717E                           @ 08017218
     bl lcd_commit_shadow                     @ 0801721C
 1:  pop {r0, pc}                             @ 08017220

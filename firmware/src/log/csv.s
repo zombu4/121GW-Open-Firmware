@@ -15,6 +15,9 @@
 @   the value of a reading is "Overflow" or "-Overflow" (flags bit 7, bit 6) or an optional "-" and six digits with a
 @   decimal point (log_write_value).  Remark = PeakHold, 1KHz or ACDC from the flag bits 3, 2, 4 of the main reading (the tests
 @   are made in that order, only the first that is set is written).
+@   IMP-68: with a current clamp ratio (SETUP page CLP) the main reading of the modes DCV, ACV, DCmV and ACmV is written as a
+@   current: the unit "A" or "mA" and the value with the places of ui/clamp.s (log_write_value_main, log_write_unit_main);
+@   the function column still names the voltage mode.  The sub readings are unchanged.
 @ Closing rows (log_write_minmax_rows): the maximum and the minimum row of the file, written when logging stops.
 @
 @ Token numbers: 0x00 "," 0x01 CRLF 0x02 "-Overflow" 0x03 "Overflow" 0x04 "-" 0x05 "START," 0x06 "ID," 0x07 "INTERVAL,"
@@ -181,7 +184,7 @@ FUNC log_write_row
     ldrb    r1, [r0]                        @ 0801DCA4 r1 = u8 [log_view_range1]
     ldr.w   r0, =log_view_mode1             @ 0801DCA6 r0 = &log_view_mode1
     ldrb    r0, [r0]                        @ 0801DCAA r0 = u8 [log_view_mode1]
-    bl      log_write_value                 @ 0801DCAC call log_write_value
+    bl      log_write_value_main            @ 0801DCAC call log_write_value (IMP-68: the main reading, in A or mA with a clamp ratio)
     cmp     r0, #0                          @ 0801DCB0 compare r0 with 0
     beq     .Llog_write_row_DCB8            @ 0801DCB2 if (r0 == 0) goto 0x801DCB8
     movs    r0, #1                          @ 0801DCB4 r0 = 1
@@ -201,7 +204,7 @@ FUNC log_write_row
     ldrb    r1, [r0]                        @ 0801DCCE r1 = u8 [log_view_range1]
     ldr.w   r0, =log_view_mode1             @ 0801DCD0 r0 = &log_view_mode1
     ldrb    r0, [r0]                        @ 0801DCD4 r0 = u8 [log_view_mode1]
-    bl      log_write_unit                  @ 0801DCD6 call log_write_unit
+    bl      log_write_unit_main             @ 0801DCD6 call log_write_unit (IMP-68: A or mA with a clamp ratio)
     cmp     r0, #0                          @ 0801DCDA compare r0 with 0
     beq     .Llog_write_row_DCE2            @ 0801DCDC if (r0 == 0) goto 0x801DCE2
     movs    r0, #1                          @ 0801DCDE r0 = 1
@@ -1468,7 +1471,7 @@ FUNC log_write_minmax_rows
     ldrb    r1, [r0]                        @ 0801E608 r1 = u8 [log_view_range1]
     ldr     r0, =log_view_mode1             @ 0801E60A r0 = &log_view_mode1
     ldrb    r0, [r0]                        @ 0801E60C r0 = u8 [log_view_mode1]
-    bl      log_write_value                 @ 0801E60E call log_write_value
+    bl      log_write_value_main            @ 0801E60E call log_write_value (IMP-68: the main reading, in A or mA with a clamp ratio)
     cmp     r0, #0                          @ 0801E612 compare r0 with 0
     beq     .Llog_write_minmax_rows_E61A    @ 0801E614 if (r0 == 0) goto 0x801E61A
     movs    r0, #1                          @ 0801E616 r0 = 1
@@ -1488,7 +1491,7 @@ FUNC log_write_minmax_rows
     ldrb    r1, [r0]                        @ 0801E62E r1 = u8 [log_view_range1]
     ldr     r0, =log_view_mode1             @ 0801E630 r0 = &log_view_mode1
     ldrb    r0, [r0]                        @ 0801E632 r0 = u8 [log_view_mode1]
-    bl      log_write_unit                  @ 0801E634 call log_write_unit
+    bl      log_write_unit_main             @ 0801E634 call log_write_unit (IMP-68: A or mA with a clamp ratio)
     cmp     r0, #0                          @ 0801E638 compare r0 with 0
     beq     .Llog_write_minmax_rows_E640    @ 0801E63A if (r0 == 0) goto 0x801E640
     movs    r0, #1                          @ 0801E63C r0 = 1
@@ -1589,7 +1592,7 @@ FUNC log_write_minmax_rows
     ldrb    r1, [r0]                        @ 0801E6F0 r1 = u8 [log_view_range1]
     ldr     r0, =log_view_mode1             @ 0801E6F2 r0 = &log_view_mode1
     ldrb    r0, [r0]                        @ 0801E6F4 r0 = u8 [log_view_mode1]
-    bl      log_write_value                 @ 0801E6F6 call log_write_value
+    bl      log_write_value_main            @ 0801E6F6 call log_write_value (IMP-68: the main reading, in A or mA with a clamp ratio)
     cmp     r0, #0                          @ 0801E6FA compare r0 with 0
     beq     .Llog_write_minmax_rows_E702    @ 0801E6FC if (r0 == 0) goto 0x801E702
     movs    r0, #1                          @ 0801E6FE r0 = 1
@@ -1608,7 +1611,7 @@ FUNC log_write_minmax_rows
     ldrb    r1, [r0]                        @ 0801E716 r1 = u8 [log_view_range1]
     ldr     r0, =log_view_mode1             @ 0801E718 r0 = &log_view_mode1
     ldrb    r0, [r0]                        @ 0801E71A r0 = u8 [log_view_mode1]
-    bl      log_write_unit                  @ 0801E71C call log_write_unit
+    bl      log_write_unit_main             @ 0801E71C call log_write_unit (IMP-68: A or mA with a clamp ratio)
     cmp     r0, #0                          @ 0801E720 compare r0 with 0
     beq     .Llog_write_minmax_rows_E728    @ 0801E722 if (r0 == 0) goto 0x801E728
     movs    r0, #1                          @ 0801E724 r0 = 1
@@ -1722,6 +1725,107 @@ FUNC log_write_value
     pop.w   {r4, r5, r6, r7, r8, pc}        @ 0801E82A pop {r4, r5, r6, r7, r8, pc}
 ENDFUNC log_write_value
     .ltorg
+
+@ -----------------------------------------------------------------------------
+@ log_write_value_main - write the value of the main reading: log_write_value, or the current of a clamp (IMP-68)
+@ Replaces  : nothing in v2.05 (new; the main reading's calls of log_write_value in log_write_row and log_write_minmax_rows)
+@ In        : r0 = mode (u8), r1 = range (u8), r2 = magnitude (u32), as log_write_value
+@ Out       : r0 = 0 ok, 1 write failed
+@ Clobbers  : r0-r3, r12, flags (r4-r7 saved)
+@ Context   : main only
+@ RAM       : reads set_clamp_code (ui_clamp_code)
+@ Note      : with the clamp ratio off, or a mode other than DCV, ACV, DCmV, ACmV, the call is log_write_value (a tail
+@             call).  Otherwise d' is that of ui/clamp.s (ui_clamp_calc: d of the range, the ratio code, the unit): with
+@             0 <= d' <= 4 the digits as before with d' places, with d' > 4 (milliamperes, the unit written by
+@             log_write_unit_main) with d' - 3 places, and with d' < 0 the six digits of the counts, no point, followed
+@             by -d' zeros ("012345000": the value in amperes as an integer).  The sign is written by the caller.
+@ -----------------------------------------------------------------------------
+FUNC log_write_value_main
+    push    {r4, r5, r6, r7, lr}
+    mov     r4, r0                          @ r4 = mode
+    mov     r5, r1                          @ r5 = range
+    mov     r6, r2                          @ r6 = magnitude
+    bl      ui_clamp_code                   @ r0 = ratio code of the mode, 0 = no clamp
+    cbnz    r0, 1f
+    mov     r0, r4                          @ no clamp: the unchanged writer with the caller's arguments
+    mov     r1, r5
+    mov     r2, r6
+    pop     {r4, r5, r6, r7, lr}
+    b       log_write_value
+1:  mov     r0, r4
+    mov     r1, r5
+    bl      decimal_position_for_mode_range @ r0 = d, the places of the voltage
+    mov     r1, r0
+    mov     r0, r4
+    bl      ui_clamp_calc                   @ r0 = kind, r1 = places of the current, r2 = d'
+    cmp     r0, #3
+    beq     2f                              @ d' < 0: counts and zeros
+    mov     r2, r1                          @ places of the current (A: d', mA: d' - 3)
+    mov     r1, r6                          @ magnitude
+    movs    r0, #0xc8                       @ token 0xC8: fixed point number
+    bl      log_write_csv_token
+    pop     {r4, r5, r6, r7, pc}
+2:  mov     r7, r2                          @ r7 = d' (negative)
+    mov     r0, r6
+    movs    r1, #0                          @ no decimal point
+    bl      log_format_fixed                @ r0 = six digits
+    mov     r5, r0
+    bl      fn_08023CA0                     @ strlen (RT)
+    movs    r1, r0
+    uxth    r1, r1
+    mov     r0, r5
+    bl      log_write_bytes                 @ the digits of the counts
+    cbnz    r0, 3f                          @ write failed: r0 = 1
+    ldr     r0, =log_clamp_zeros
+    rsbs    r1, r7, #0                      @ -d' zeros (1..3)
+    bl      log_write_bytes
+3:  pop     {r4, r5, r6, r7, pc}
+ENDFUNC log_write_value_main
+
+@ -----------------------------------------------------------------------------
+@ log_write_unit_main - write the unit of the main reading: log_write_unit, or "A," / "mA," for a clamp (IMP-68)
+@ Replaces  : nothing in v2.05 (new; the main reading's calls of log_write_unit in log_write_row and log_write_minmax_rows)
+@ In        : r0 = mode (u8), r1 = range (u8), as log_write_unit
+@ Out       : r0 = 0 ok, 1 write failed
+@ Clobbers  : r0-r3, r12, flags (r4, r5 saved)
+@ Context   : main only
+@ RAM       : reads set_clamp_code (ui_clamp_code)
+@ Note      : with the clamp ratio off, or a mode other than DCV, ACV, DCmV, ACmV, the call is log_write_unit (a tail call).
+@             Otherwise token 0x47 "A," (d' <= 4, the overload case included) or 0x46 "mA," (d' > 4), as ui_clamp_calc
+@             decides for the range.
+@ -----------------------------------------------------------------------------
+FUNC log_write_unit_main
+    push    {r4, r5, lr}
+    mov     r4, r0                          @ r4 = mode
+    mov     r5, r1                          @ r5 = range
+    bl      ui_clamp_code
+    cbnz    r0, 1f
+    mov     r0, r4                          @ no clamp: the unchanged writer
+    mov     r1, r5
+    pop     {r4, r5, lr}
+    b       log_write_unit
+1:  mov     r0, r4
+    mov     r1, r5
+    bl      decimal_position_for_mode_range @ r0 = d
+    mov     r1, r0
+    mov     r0, r4
+    bl      ui_clamp_calc                   @ r0 = kind
+    cmp     r0, #2
+    ite     eq
+    moveq   r0, #0x46                       @ "mA,"
+    movne   r0, #0x47                       @ "A,"
+    movs    r1, #0
+    movs    r2, #0
+    bl      log_write_csv_token
+    pop     {r4, r5, pc}
+ENDFUNC log_write_unit_main
+
+    .pushsection .rodata.log, "a", %progbits
+@ log_clamp_zeros - the zeros that follow the counts when the current does not fit the places of the display (d' of -1 .. -3)
+log_clamp_zeros:
+    .ascii "000"
+    .size log_clamp_zeros, . - log_clamp_zeros
+    .popsection
 
 @ -----------------------------------------------------------------------------
 @ log_write_csv_token - append one CSV token to the log file

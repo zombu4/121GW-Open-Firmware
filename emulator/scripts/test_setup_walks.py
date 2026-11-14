@@ -5,12 +5,12 @@ issue 24).
 
 SETUP short walks the measurement pages and ends on the page SEt (item 43); a long SETUP on SEt opens the meter pages.
 Each check presses SETUP short and records the item after every press (set_item, RAM 0x20008037), starting on item 0.
-  W1 DCV: 0 -> rEL 22 -> dSP 24 -> Lt 27 -> Lo 28 -> HI 29 -> tr 30 -> In 9 -> SEt 43 -> 0; the page In loads its edit
+  W1 DCV: 0 -> rEL 22 -> dSP 24 -> CLP 48 (IMP-68, DCV, ACV, DCmV, ACmV) -> Lt 27 -> Lo 28 -> HI 29 -> tr 30 -> In 9 -> SEt 43 -> 0; the page In loads its edit
      buffer (set_interval_edit = set_log_interval, as v2.05 on entering item 9); SEt shows "SEt" on the sub display
   W2 the meter walk: long SETUP on SEt -> 1 -> bAt 47 (IMP-67) -> 2 .. 8 -> bL 20 -> bt 21 -> Ld 39 -> CL 25 -> bAcK 44
      (F-1.26, IMP-57) -> 0 (no two-part
      bootloader in the emulator: no Fr); no edit is started by the long SETUP on SEt
-  W3 ACV (function pages 10, 11): from item 0: 10 -> 11 -> rEL ... ; DIODE: 0 -> 10 -> 22 -> 24 -> CHIrP 42 -> 27
+  W3 ACV (function pages 10, 11): from item 0: 10 -> 11 -> rEL -> dSP -> CLP 48 ... ; DIODE: 0 -> 10 -> 22 -> 24 -> CHIrP 42 -> 27
   W4 tr-Ch and MIN/MAX on: tr 30 -> Ch 31 -> In 9 -> n 32 -> Sd 33 -> tHI 34 -> tLo 35 -> SEt 43
 RUN LIMIT: 1 run of this script (4 boots).
 The helpers are those of test_backlight_timer.py.
@@ -51,8 +51,8 @@ def run_tests(image):
     print('W1 DCV measurement walk')
     e = start(image, 2)
     e.m.uc.mem_write(ADDR_LOG_INTERVAL, (7).to_bytes(2, 'little'))
-    seq = walk(e, 9)
-    T.check('W1: 0 -> rEL dSP Lt Lo HI tr In SEt -> 0', seq == [22, 24, 27, 28, 29, 30, 9, 43, 0], repr(seq))
+    seq = walk(e, 10)
+    T.check('W1: 0 -> rEL dSP CLP Lt Lo HI tr In SEt -> 0', seq == [22, 24, 48, 27, 28, 29, 30, 9, 43, 0], repr(seq))
     e.m.uc.mem_write(ADDR_ITEM, bytes([30]))
     T.press(e, 'SETUP', gap=0.5)
     T.check('W1: In loads its edit buffer from the log interval', T.rd(e, ADDR_ITEM) == 9
@@ -73,8 +73,8 @@ def run_tests(image):
     T.press(e, 'MODE', gap=1.0)
     mode = T.rd(e, 0x2000803C)
     e.m.uc.mem_write(ADDR_ITEM, bytes([0]))
-    seq = walk(e, 4)
-    T.check('W3: ACV (mode %d): 0 -> 10 -> 11 -> rEL -> dSP' % mode, mode == 2 and seq == [10, 11, 22, 24], repr(seq))
+    seq = walk(e, 6)
+    T.check('W3: ACV (mode %d): 0 -> 10 -> 11 -> rEL -> dSP -> CLP -> Lt' % mode, mode == 2 and seq == [10, 11, 22, 24, 48, 27], repr(seq))
     e = start(image, 5, {EE_DIAL5_MODE: 11})
     seq = walk(e, 5)
     T.check('W3: DIODE: 0 -> 10 -> rEL -> dSP -> CHIrP -> Lt', seq == [10, 22, 24, 42, 27], repr(seq))
