@@ -43,6 +43,9 @@
     .equ UI_RP_W4_MASK,       0x00000F00    @ w4: Hz (b8), F (b9), V (b10), degC (b11)
     .equ UI_RP_W6_MASK,       0x00000C00    @ w6: A (b10), degF (b11)
     .equ UI_RP_W6_MS,         0x00000001    @ w6: ms (b0)
+    .equ UI_RP_W4_V,          0x00000400    @ w4: V (b10)
+    .equ UI_RP_W6_A,          0x00000400    @ w6: A (b10)
+    .equ UI_RP_W2_M,          0x00000400    @ w2: m (b10)
     .equ UI_RP_W4_DEGC,       0x00000800    @ w4: degC (b11)
     .equ UI_RP_W6_DEGF,       0x00000800    @ w6: degF (b11)
 
@@ -205,7 +208,9 @@ ENDFUNC ui_rp_text_prep
 @ Context  : main only
 @ RAM      : reads and writes lcd_shadow words 0, 2, 4, 6, ui_relpct_last; reads peak_hold, 0x200080AB; writes 0x20008060,
 @            0x20008061 when the view ends
-@ Note     : the percent views clear the unit and prefix signs and light %; the RTD view clears them (% included) and
+@ Note     : IMP-68: the current clamp view of DCV, ACV, DCmV and ACmV (ui_clamp_kind, tried last) turns V off and A on, and
+@            the m prefix on for milliamperes (off for amperes), nothing else; its mode signs and the HV sign stay.
+@            The percent views clear the unit and prefix signs and light %; the RTD view clears them (% included) and
 @            lights degC (0x200080AB non-zero) or degF (0), the signs of TEMP (fn_0801A3A4).  The views are tried in the
 @            order of fn_08016E08, so the mask belongs to the view that is drawn; the pages Sd, tHI, tLo, HUnt (IMP-45) and CHIrP
 @            (IMP-51), drawn there before every view, take no mask (before IMP-25 the percent mask also covered the standard deviation of Sd).
@@ -224,6 +229,8 @@ FUNC ui_relpct_mask
     cbnz r0, 1f
     bl ui_rtd_view                          @ IMP-25: the RTD view, kind 2
     lsls r0, r0, #1                         @ r0 = 0 none, 1 percent, 2 temperature
+    cbnz r0, 1f
+    bl ui_clamp_kind                        @ IMP-68: the current clamp view of DCV, ACV, DCmV, ACmV: 3 amperes, 4 milliamperes
     b 1f
 0:  movs r0, #0
 1:  mov r4, r0
@@ -231,7 +238,8 @@ FUNC ui_relpct_mask
     ldrb r2, [r1]
     strb r0, [r1]                           @ remember for the next commit
     cbnz r0, .Lrm_apply
-    cbz r2, .Lrm_ret                        @ off, and was off: nothing
+    cmp r2, #0
+    beq .Lrm_ret                            @ off, and was off: nothing
     movs r0, #1                             @ the view has ended: redraw every annunciator and the unit prefix
     ldr r1, =v_20008060
     strb r0, [r1]
@@ -240,6 +248,24 @@ FUNC ui_relpct_mask
     b .Lrm_ret
 .Lrm_apply:
     ldr r3, =lcd_shadow
+    cmp r4, #3
+    blo .Lrm_not_clamp
+    @ IMP-68: the clamp view (kind 3 amperes, 4 milliamperes) changes three signs only: V off, A on, m on for mA; the
+    @ AC / DC and status signs, the HV sign and the bargraph labels stay as the voltage mode has them
+    ldr r0, [r3, #16]
+    bic r0, r0, #UI_RP_W4_V                 @ V off
+    str r0, [r3, #16]
+    ldr r0, [r3, #24]
+    orr r0, r0, #UI_RP_W6_A                 @ A on
+    str r0, [r3, #24]
+    ldr r0, [r3, #8]
+    bic r0, r0, #UI_RP_W2_M                 @ m off ...
+    cmp r4, #4
+    it eq
+    orreq r0, r0, #UI_RP_W2_M               @ ... and on for milliamperes (the voltage mode's own m of DCmV, ACmV is replaced)
+    str r0, [r3, #8]
+    b .Lrm_ret
+.Lrm_not_clamp:
     ldr r0, [r3, #0]
     bic r0, r0, #UI_RP_W0_MASK
     bic r0, r0, #UI_RP_W0_PCT

@@ -7,14 +7,14 @@ Two emulated meters, both with the bundled synthetic EEPROM.  The reference mete
 with the keys (item poked, long SETUP = edit, REL until the page's RAM variable has the wanted value, long SETUP = save);
 for every setting the EEPROM byte and the RAM variable it ends with are recorded.  The second meter shows the page Ld
 (Bluetooth on) and takes PUT requests over the emulated USART2 (host side emulator/tools/btft.py).
-  T1 reference: the 20 pages (the four pages of EEPROM 0x020 together; the page APO for 0x016 and for the time 0x02B)
+  T1 reference: the 20 pages (the five pages of EEPROM 0x020 together; the page APO for 0x016 and for the time 0x02B)
      give the recorded EEPROM byte and RAM value.
   T2 GET: the 21 one-byte ids in table order with the values of the synthetic EEPROM as the pages show them.
   T3 round trip: every id with 2 .. 4 values (the first is the one the reference meter's page gave): status 0, the answer
      names the id and the value now in effect, the EEPROM byte and the RAM variable equal the reference's for the first
      value and the page's rules for the others (byte = value, RAM = value - bias), and no other EEPROM byte changed (the
      whole 1280-byte EEPROM is compared after every PUT).
-  T4 refusals: below the minimum and above the maximum of every id, a trigger of 3 and bits 7..5 in id 0x020, ids that
+  T4 refusals: below the minimum and above the maximum of every id, a trigger of 3 and a clamp code above 4 (bits 7..5) in id 0x020, ids that
      are not settings (rotary memory, identity, calibration, restore, user zero, the logging interval 0x018), a payload of
      2 and of 5 bytes: status 0x22, nothing changed.  (The two-byte forms of F-1.33 and the two-byte id 0x02D are tested
      by test_cont_user.py; here 0x02D, sent in the one-byte form, is refused as no one-byte setting.)
@@ -59,7 +59,7 @@ SPEC = [
     (0x01A, 'LCD contrast', 0x20000237, 0, 10, 17, [16, 10, 17, 14], 4, None, 14),
     (0x01B, 'VA burden bd', 0x200080A8, 0, 0, 1, [1, 0], 11, 15, 0),
     (0x01E, 'buzzer', 0x20008078, 0, 0, 2, [0, 2, 1], 3, None, 1),   # 2 qUiEt (F-1.24, IMP-54)
-    (0x020, 'REL / trigger / clock / anti-hunting', None, 0, 0, 31, [0x1B, 0x04, 0x15, 0x00], None, None, 0),
+    (0x020, 'REL / trigger / clock / anti-hunting / clamp', None, 0, 0, 159, [0x7B, 0x04, 0x95, 0x00], None, None, 0),   # clamp code in bits 7..5 (IMP-68)
     (0x021, 'continuity hold', 'set_bh_code', 0, 0, 3, [2, 3, 0], 26, None, 0),
     (0x022, 'change threshold', 'log_ch_thr', 0, 1, 255, [7, 255, 1], 31, None, 1),
     (0x023, 'battery type', 'set_bat_nimh', 0, 0, 1, [1, 0], 47, None, 0),   # page bAt (IMP-67)
@@ -75,7 +75,7 @@ SAVES = {s[0]: {s[0]} for s in SPEC}
 SAVES[0x016] = SAVES[0x02B] = {0x016, 0x02B}
 NOT_SETTINGS = [0x000, 0x001, 0x003, 0x007, 0x008, 0x009, 0x00A, 0x00B, 0x00C, 0x00D, 0x00E, 0x012, 0x018, 0x019, 0x01F,
                 0x024, 0x026, 0x02D, 0x030, 0x2D0, 0x2E0, 0x4D0, 0x4F8, 0x500, 0xFFFF]
-B20_VARS = ('set_relp', 'log_trig', 'set_clk12', 'set_hunt_on')
+B20_VARS = ('set_relp', 'log_trig', 'set_clk12', 'set_hunt_on', 'set_clamp_code')
 
 
 class Meter:
@@ -97,9 +97,9 @@ class Meter:
 
 
 def want_ram(spec, value):
-    """RAM bytes the page leaves for `value` (EEPROM 0x020: the four variables)."""
+    """RAM bytes the page leaves for `value` (EEPROM 0x020: the five variables)."""
     if spec[2] is None:
-        return (value & 1, value >> 1 & 3, value >> 3 & 1, value >> 4 & 1)
+        return (value & 1, value >> 1 & 3, value >> 3 & 1, value >> 4 & 1, value >> 5 & 7)
     return ((value - spec[3]) & 0xFF,)
 
 
@@ -131,11 +131,12 @@ def reference(m, spec_list):
     for spec in spec_list:
         before = bytes(e.m.eeprom)
         if spec[2] is None:
-            v = spec[6][0]                           # EEPROM 0x020: the four pages rEL (22), tr (30), CL (25), HUnt (41)
+            v = spec[6][0]                           # EEPROM 0x020: the five pages rEL (22), tr (30), CL (25), HUnt (41), CLP (48)
             page(spec, 22, None, v & 1, m.addr('set_relp'))
             page(spec, 30, None, v >> 1 & 3, m.addr('log_trig'))
             page(spec, 25, None, v >> 3 & 1, m.addr('set_clk12'))
             page(spec, 41, None, v >> 4 & 1, m.addr('set_hunt_on'))
+            page(spec, 48, None, v >> 5 & 7, m.addr('set_clamp_code'))     # needs DCV, ACV, DCmV or ACmV: the meter is in DCV
         else:
             ram = m.addr(spec[2])
             target = (spec[6][0] - spec[3]) & 0xFF
@@ -199,7 +200,7 @@ def run_tests(image):
     for spec in SPEC:
         sid = spec[0]
         if spec[2] is None:
-            values = [0x20, 0x06, 0x0E, 0xFF]        # bit 5 (bits 7..5 are no settings), trigger 3 (twice)
+            values = [0xA0, 0xC0, 0x06, 0x0E, 0xFF]  # clamp codes 5 and 6 (bits 7..5, above the maximum 0x9F), trigger 3 (twice)
         else:
             values = ([spec[4] - 1] if spec[4] > 0 else []) + ([spec[5] + 1, 255] if spec[5] < 255 else [])
         for value in values:

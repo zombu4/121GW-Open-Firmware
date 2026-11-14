@@ -97,6 +97,7 @@
     .equ SET_ITEM_UT, 45                    @ IMP-64: user continuity threshold page th (BEEP, codes 16 and 17 only, after bH)
     .equ SET_ITEM_UH, 46                    @ IMP-64: user continuity hysteresis page HY (after th)
     .equ SET_ITEM_BATT, 47                  @ IMP-67: battery type page bAt (meter walk, between the battery page 1 and APO 2)
+    .equ SET_ITEM_CLP, 48                   @ IMP-68: current clamp page CLP (DCV, ACV, DCmV, ACmV only, between dSP and Lt)
     .equ SET_CONT_CODES, 18                 @ IMP-05, IMP-64: continuity threshold codes 0..17
     .equ SET_CONT_USER, 16                  @ IMP-64: the first user code (16 DNUSr, 17 UPUSr)
     .equ SET_ITEM_IN, 9                     @ v2.05's log interval page In; IMP-52: in the measurement walk after tr / Ch
@@ -136,8 +137,9 @@ FUNC fn_08015410
     @ (v2.05's own sequence, entered as if from item 9, so their entry actions run; a mode without them wraps), a wrap goes
     @ to the page rEL (item 22); on rEL to the page tc (item 23) in TEMP (mode 5), else to the page dSP (item 24); on tc to
     @ dSP; on dSP to the page bH (item 26, IMP-16) in BEEP (mode 10), LP (item 37, IMP-24) in DCmA (mode 19), Pt (item 38,
-    @ IMP-25) in OHM (mode 9), HUnt (item 41, IMP-45) in CAP (mode 12), CHIrP (item 42, IMP-51) in DIODE (mode 11), else to
-    @ the limit pages Lt, Lo, HI (27..29, IMP-20); on bH, LP, Pt, HUnt and CHIrP to Lt; on HI to the verdict page (36)
+    @ IMP-25) in OHM (mode 9), HUnt (item 41, IMP-45) in CAP (mode 12), CHIrP (item 42, IMP-51) in DIODE (mode 11), CLP
+    @ (item 48, IMP-68) in DCV, ACV, DCmV and ACmV (modes 1..4), else to
+    @ the limit pages Lt, Lo, HI (27..29, IMP-20); on bH, LP, Pt, HUnt, CHIrP and CLP to Lt; on HI to the verdict page (36)
     @ while the test is on; then the logging pages tr (30) and, with tr-Ch, Ch (31) (IMP-21), then In (v2.05 item 9, its
     @ edit buffer loaded as v2.05 does); then, while MIN/MAX is on, the statistics page n (item 32, IMP-14), Sd (33), the
     @ time pages tHI (34) and tLo (35) (IMP-21); then the page SEt (item 43); on SEt to item 0.  Meter walk (from SEt by a
@@ -258,6 +260,8 @@ FUNC fn_08015410
     beq .Lsn_to_lt                          @ HUnt: next is Lt
     cmp r0, #SET_ITEM_CHIRP
     beq .Lsn_to_lt                          @ CHIrP: next is Lt
+    cmp r0, #SET_ITEM_CLP
+    beq .Lsn_to_lt                          @ CLP: next is Lt (IMP-68)
     cmp r0, #SET_ITEM_DSP
     bne .Lsn_not_dsp
     ldr.w r0, =meter_mode
@@ -279,8 +283,13 @@ FUNC fn_08015410
     movs r0, #SET_ITEM_CHIRP                @ dSP in DIODE: next is CHIrP (IMP-51)
     b .Lsn_port_set
 10: cmp r0, #0xa
-    bne .Lsn_to_lt                          @ dSP outside BEEP, DCmA, OHM, CAP and DIODE: next is Lt
+    bne 13f
     movs r0, #SET_ITEM_BH                   @ dSP in BEEP: next is bH
+    b .Lsn_port_set
+13: subs r0, r0, #1                         @ IMP-68: dSP in DCV, ACV, DCmV and ACmV (modes 1..4): next is CLP
+    cmp r0, #3
+    bhi .Lsn_to_lt                          @ dSP outside BEEP, DCmA, OHM, CAP, DIODE and modes 1..4: next is Lt
+    movs r0, #SET_ITEM_CLP
     b .Lsn_port_set
 .Lsn_not_dsp:
     cmp r0, #SET_ITEM_TC
@@ -348,9 +357,13 @@ FUNC fn_08015410
     beq 1f
     cmp r1, #SET_ITEM_CHIRP
     beq 1f
+    cmp r1, #SET_ITEM_CLP
+    beq 1f                                  @ IMP-68: the page CLP shows its name on the main display too
     cmp r0, #SET_ITEM_HUNT
     beq 1f
     cmp r0, #SET_ITEM_CHIRP
+    beq 1f
+    cmp r0, #SET_ITEM_CLP
     bne 2f
 1:  push {r0}
     movs r0, #0x1
@@ -1773,6 +1786,20 @@ FUNC fn_080165F4
     bl set_bat_edit                         @ up, down or save of the battery type
     b .L08016800
 .Lse_not_batt:
+    cmp r0, #SET_ITEM_CLP                   @ IMP-68: the current clamp page CLP (item 48)
+    bne .Lse_not_clp
+    uxtb r4, r4
+    cmp r4, #0x0                            @ query?
+    bne .Lse_clp_act
+    movs r0, #0x1
+    movs r5, r0                             @ query result: editable
+    b .L08016800
+.Lse_clp_act:
+    movs r0, r4
+    uxtb r0, r0
+    bl set_clp_edit                         @ up, down or save of the clamp ratio
+    b .L08016800
+.Lse_not_clp:
     sub r1, r0, #SET_ITEM_LT                @ IMP-20: the limit pages Lt, Lo, HI (27..29)
     cmp r1, #2
     bhi .Lse_not_lt
@@ -2578,6 +2605,11 @@ FUNC fn_0801797C
     bl set_bat_draw
     b .L08017F26
 .Lsd_not_batt:
+    cmp r0, #SET_ITEM_CLP                   @ IMP-68: the current clamp page CLP (item 48)
+    bne .Lsd_not_clp
+    bl set_clp_draw
+    b .L08017F26
+.Lsd_not_clp:
     cmp r0, #SET_ITEM_SET                   @ IMP-52: the page SEt (item 43)
     bne .Lsd_not_set
     bl set_menu_draw

@@ -685,7 +685,7 @@ FUNC handle_pg8_15_short_press
     ldrb r1, [r0]                       @ 0801514E
     ldr r0, =meter_mode                 @ 08015150
     ldrb r0, [r0]                       @ 08015154
-    bl lcd_show_value_pos5_9            @ 08015156
+    bl ui_clamp_show                    @ 08015156  IMP-68: in amperes while the clamp view is shown
     b .Lsh_rel_done                     @ 0801515A
 @ reached from 08015138 beq (equal / zero) after cmp r0, #0
 .Lsh_0801515C:
@@ -703,7 +703,7 @@ FUNC handle_pg8_15_short_press
     ldrb r1, [r0]                       @ 0801517A
     ldr r0, =meter_mode                 @ 0801517C
     ldrb r0, [r0]                       @ 08015180
-    bl lcd_show_value_pos5_9            @ 08015182
+    bl ui_clamp_show                    @ 08015182  IMP-68: in amperes while the clamp view is shown
     b .Lsh_rel_done                     @ 08015186
 @ reached from 08015164 beq (equal / zero) after cmp r0, #0
 .Lsh_08015188:
@@ -742,7 +742,7 @@ FUNC handle_pg8_15_short_press
     ldrb r1, [r0]                       @ 080151C8
     ldr r0, =meter_mode                 @ 080151CA
     ldrb r0, [r0]                       @ 080151CE
-    bl lcd_show_value_pos5_9            @ 080151D0
+    bl ui_clamp_show                    @ 080151D0  IMP-68: in amperes while the clamp view is shown
     b .Lsh_rel_done                     @ 080151D4
 @ reached from 080151BA beq (equal / zero) after cmp r0, #0
 .Lsh_080151D6:
@@ -761,7 +761,7 @@ FUNC handle_pg8_15_short_press
     ldrb r1, [r0]                       @ 080151F8
     ldr r0, =meter_mode                 @ 080151FA
     ldrb r0, [r0]                       @ 080151FE
-    bl lcd_show_value_pos5_9            @ 08015200
+    bl ui_clamp_show                    @ 08015200  IMP-68: in amperes while the clamp view is shown
 
 @ common end of REL: AUTO annunciator (fn_08019D68), request a redraw (0x20008053), REL annunciator
 @ (fn_08019F2E), accept beep

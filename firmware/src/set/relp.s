@@ -19,9 +19,10 @@
 @
 @ Storage: EEPROM 0x020 (EEPROM_MAP.md 4.1): bit 0 = REL view (0 difference, v2.05; 1 percent), bit 3 = clock (0 24-hour,
 @ v2.05; 1 12-hour), bit 4 = anti-hunting (0 off, default; 1 on).  Bits 2..1 are assigned to the logging trigger of
-@ FEATURES.md 2.6 and kept as found, like the unused bits 7..5; an erased byte (0xFF) reads as 0 for every bit (set_relp_load
-@ maps the whole byte to 0 before it decodes it, so an erased byte never switches the anti-hunting on).  The pages save
-@ through set_b20_store, which changes only the bits of its page.
+@ FEATURES.md 2.6 and bits 7..5 to the current clamp ratio of the page CLP (set/clp.s, IMP-68: 0 off, 1..4 = 1, 10, 100,
+@ 1000 mV per A; 5..7 read as off and are kept as found by the other pages); an erased byte (0xFF) reads as 0 for every
+@ bit (set_relp_load maps the whole byte to 0 before it decodes it, so an erased byte never switches the anti-hunting on
+@ or a clamp ratio).  The pages save through set_b20_store, which changes only the bits of its page.
 @
 @ Page text (five characters, font of analysis/lcd_map.md 2: 'r' 0x24, 'E', 'L', '-' 0x04, 'd' 0xB5, 'P', 'C'):
 @     "rEL-d"   difference          "rEL-P"   percent
@@ -57,6 +58,10 @@ set_clk12:      .space 1
 set_hunt_on:    .space 1
 @ set_relp_byte: EEPROM byte 0x020 as loaded or last saved (0xFF read as 0); set_b20_store changes only its page's bits
 set_relp_byte:  .space 1
+@ set_clamp_code: current clamp ratio code, 0 = off (default), 1..4 = 1, 10, 100, 1000 mV per A (bits 7..5 of 0x020, IMP-68;
+@ owner SET; read by ui/clamp.s, ble/packet.s, log/csv.s and the page CLP, set/clp.s)
+    .global set_clamp_code
+set_clamp_code: .space 1
 
     .section .rodata.set.relp, "a", %progbits
 set_relp_texts:
@@ -74,14 +79,15 @@ set_hunt_text:
     .section .text.set.relp, "ax", %progbits
 
 @ -----------------------------------------------------------------------------
-@ set_relp_load - load EEPROM 0x020: the REL view (bit 0), the logging trigger (bits 2..1), the clock (bit 3) and the
-@                 anti-hunting setting (bit 4)
+@ set_relp_load - load EEPROM 0x020: the REL view (bit 0), the logging trigger (bits 2..1), the clock (bit 3), the
+@                 anti-hunting setting (bit 4) and the current clamp ratio (bits 7..5)
 @ Replaces : nothing in v2.05 (new: EEPROM 0x020 is not accessed by v2.05)
 @ In/Out   : - / -
 @ Clobbers : r0-r3, r12, flags (AAPCS)
-@ Context  : main only (set_state_reset at boot and after a STOP wake; fn_0800D190 when an edit of rEL, CL, tr or HUnt times out)
-@ RAM      : writes set_relp, set_clk12, set_hunt_on, log_trig (bits 2..1, IMP-21), set_relp_byte; ah_reset when the
-@            anti-hunting setting is off
+@ Context  : main only (set_state_reset at boot and after a STOP wake; fn_0800D190 when an edit of rEL, CL, tr, HUnt or CLP
+@            times out)
+@ RAM      : writes set_relp, set_clk12, set_hunt_on, log_trig (bits 2..1, IMP-21), set_clamp_code (bits 7..5, IMP-68),
+@            set_relp_byte; ah_reset when the anti-hunting setting is off
 @ -----------------------------------------------------------------------------
 FUNC set_relp_load
     push {r4, lr}
@@ -107,6 +113,12 @@ FUNC set_relp_load
     movhi r2, #0                            @ 3 is not a trigger: tr-In
     ldr r1, =log_trig
     strb r2, [r1]
+    ubfx r2, r0, #5, #3                     @ bits 7..5: current clamp ratio (IMP-68)
+    cmp r2, #4
+    it hi
+    movhi r2, #0                            @ 5..7 are not ratios: off (the byte is left as found)
+    ldr r1, =set_clamp_code
+    strb r2, [r1]
     and r0, r0, #1
     ldr r1, =set_relp
     strb r0, [r1]                           @ bit 0: REL view
@@ -119,7 +131,8 @@ ENDFUNC set_relp_load
 @ In       : r0 = mask of the page's bits, r1 = their new value (inside the mask)
 @ Out      : -
 @ Clobbers : r0-r3, r12, flags (AAPCS)
-@ Context  : main only (set_relp_edit, set_clk_edit: save)
+@ Context  : main only (save of the pages rEL, CL and HUnt: set_relp_edit, set_clk_edit, set_hunt_edit; of the page tr:
+@            set_tr_edit, logpg.s; of the page CLP: set_clp_edit, clp.s; the Bluetooth PUT of 0x020: bftset.s, mask 0xFF)
 @ RAM      : reads and writes set_relp_byte
 @ Note     : byte = (set_relp_byte & ~mask) | value; the RAM copy follows the stored byte.  NVM_ARM SETTINGS and
 @            nvm_write_setting through set_nvm_store; NVM skips a byte that does not change.

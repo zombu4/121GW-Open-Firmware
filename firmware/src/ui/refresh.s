@@ -460,7 +460,7 @@ FUNC fn_08015934
     ldrb r1, [r0, #0]                        @ 08015960
     ldr r0, =meter_mode                      @ 08015962 &meter_mode
     ldrb r0, [r0, #0]                        @ 08015966
-    bl lcd_show_value_pos5_9                 @ 08015968
+    bl ui_clamp_show                         @ 08015968  IMP-68: lcd_show_value_pos5_9, in amperes while the clamp view is shown
 .L0801596C:                                @ reached from 0801593C beq (equal / zero); 08015956 b; falls in
     pop {r4, pc}                             @ 0801596C
 ENDFUNC fn_08015934
@@ -919,13 +919,9 @@ FUNC fn_08016E08
     ldrb r0, [r0, #0]                        @ 0801704A
     cmp r0, #0                               @ 0801704C branch if rel_active == 0
     beq .L0801707A                           @ 0801704E
-    ldr r0, =v_2000803F                      @ 08017050 &main decimal-point position
-    ldrb r5, [r0, #0]                        @ 08017054
-    uxtb r5, r5                              @ 08017056
-    cmp r5, #0                               @ 08017058 branch if main decimal-point position == 0
-    beq .L0801705E                           @ 0801705A
-    subs r5, r5, #1                          @ 0801705C
-.L0801705E:                                @ reached from 0801705A beq (equal / zero); falls in
+    movs r0, r4                              @ IMP-68: r5 = main decimal-point position - 1 (not below 0), the rule the clamp view's
+    bl ui_clamp_dpos                         @ unit signs share (ui_clamp_kind); was ldrb 0x2000803F, cmp 0, beq, subs #1 inline
+    movs r5, r0
     movs r3, #1                              @ 0801705E
     movs r0, #10                             @ 08017060
     sdiv r2, r4, r0                          @ 08017062
@@ -933,7 +929,7 @@ FUNC fn_08016E08
     uxtb r1, r1                              @ 08017068
     ldr r0, =meter_mode                      @ 0801706A &meter_mode
     ldrb r0, [r0, #0]                        @ 0801706E
-    bl lcd_show_value_pos5_9                 @ 08017070
+    bl ui_clamp_show                         @ 08017070  IMP-68: lcd_show_value_pos5_9, in amperes while the clamp view is shown
     ldr r0, =v_20007D70                      @ 08017074 &last drawn main value
     str r4, [r0, #0]                         @ 08017078
 .L0801707A:                                @ reached from 0801704E beq (equal / zero); falls in
@@ -947,7 +943,7 @@ FUNC fn_08016E08
     ldrb r1, [r0, #0]                        @ 08017084
     ldr r0, =meter_mode                      @ 08017086 &meter_mode
     ldrb r0, [r0, #0]                        @ 0801708A
-    bl lcd_show_value_pos5_9                 @ 0801708C
+    bl ui_clamp_show                         @ 0801708C  IMP-68: lcd_show_value_pos5_9, in amperes while the clamp view is shown
 .L08017090:                                @ reached from 08016E5A b; 08016E74 b; 08016EC2 b; 08016EDC b; 08016EFE b; 08016F18 b; 08016F32 b; 08016F54 b; 08016F6E b; 08016F90 b; 08016FAA b; 08016FCC b; 08017004 b; 0801702C b; 0801707A b; falls in
     pop {r0, r4, r5, pc}                     @ 08017090
 ENDFUNC fn_08016E08
@@ -1025,7 +1021,8 @@ LFUNC ui_bootwin_gate
     bne .Lbg_combo                          @ a combination is in progress: its screens own the display
     ldr r0, =ui_lamp_test
     ldrb r0, [r0]                           @ 1 = all segments lit by the RANGE key (set by fn_0801A89C)
-    cbnz r0, .Lbg_lamp
+    cmp r0, #0
+    bne .Lbg_lamp                           @ (a branch: cbnz no longer reaches it, IMP-68 code grew the routine)
     ldr r0, =ui_bw_state
     ldrb r1, [r0]
     cmp r1, #1
@@ -1042,6 +1039,7 @@ LFUNC ui_bootwin_gate
     bl fn_08019A98                          @ five spaces on the main digits, main minus sign off
     ldr r0, =v_2000803F
     ldrb r0, [r0]
+    bl ui_clamp_point                       @ IMP-68: the point of the current while the clamp view is shown
     bl fn_0801717E                          @ main decimal point of the applied range (0 = none)
 .Lbg_showver:
     ldr r0, =ui_bw_state

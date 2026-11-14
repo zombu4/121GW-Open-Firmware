@@ -26,7 +26,7 @@ The pages come in two groups (GitHub issue 24: one long walk had grown to about 
 
 **Measurement pages** (press **SETUP**): the temperature page → the function's own pages of the original (dBm in ACV,
 the continuity threshold in BEEP, the current option, `bd`) → `rEL` (REL mode) → `tc` (thermocouple type, TEMP only) →
-`dSP` (display level) → `bH` (continuity hold, BEEP only) → `th`, `HY` (your continuity threshold and hysteresis, BEEP
+`dSP` (display level) → `CLP` (current clamp, DCV / ACV / mV only) → `bH` (continuity hold, BEEP only) → `th`, `HY` (your continuity threshold and hysteresis, BEEP
 with `DNUSr` or `UPUSr` only) → `LP` (4–20 mA view, DC mA only) → `Pt` (PT100 / PT1000
 view, Ω only) → `HUnt` (capacitance anti-hunting, CAP only) → `CHIrP` (diode contact chirp, DIODE only) → `Lt`, `Lo`,
 `HI` (limit test; the verdict page while the test is on) → `tr`, `Ch` (logging trigger) → `In` (logging interval) →
@@ -218,7 +218,7 @@ With the meter on the SETUP page `Ld-bt` (Bluetooth on, logging off, not in cali
 - **read and change the settings** of the SETUP pages: thermocouple type, temperature unit, dBm reference, display level,
   continuity threshold and hold, Bluetooth speed, auto power-off, backlight auto-off, contrast, VA burden, buzzer, REL
   view, logging trigger and change threshold, 12-hour clock, current-loop and RTD views, the capacitance anti-hunting
-  (`HUnt`, F-1.16 or newer), battery trim and battery type.  A change is
+  (`HUnt`, F-1.16 or newer), battery trim, battery type and the current clamp setting (F-1.35 or newer).  A change is
   stored exactly as the page itself stores it; calibration, serial number and the rotary memory cannot be reached.  The
   logging interval is set on the meter only.
 
@@ -314,6 +314,24 @@ The card update (HOLD + MEM at power-on, SETUP) keeps working with the two-part 
   nor in calibration mode or date-code mode. If the battery is below the limit of the chosen type,
   the battery symbol is on and the double beep sounds once (silent with the buzzer off, sounding with `qUiEt`). This also
   applies when the meter wakes up from auto power-off.
+
+## Current clamp (voltage-output clamp read in amperes, F-1.35 or newer)
+
+- **Where:** SETUP page `CLP` in the V and mV functions (DC V, AC V, DC mV, AC mV), right after `dSP`. The main display shows
+  `CLP` and the sub display the setting: `oFF` (the default: volts, as always), `1`, `10`, `100` or `1000` - the millivolts
+  your clamp gives for one ampere (`1000` is 1 V per A). Hold SETUP to edit (the sub display blinks), press REL (up) or
+  PEAK (down), hold SETUP to save; a short SETUP leaves without saving.
+- **Effect:** the main display shows the current in amperes: the same digits as the voltage, with the decimal point moved,
+  and the A sign instead of V. Examples: 10 mV per A, DC V reads 0.2534 V: the display shows `25.34` A; 1 mV per A, DC mV
+  reads 253.40 mV: `253.40` A; 100 mV per A, DC mV reads 50.000 mV: `500.00` mA (the m sign lights when the amperes would
+  need more than four decimals). When the current does not fit the five digits (1 mV per A and 100.00 V on the
+  display: that would be 100 000 A) the display shows `OFL`.
+- **What stays as it is:** the measurement itself, MIN/MAX, statistics, HOLD, REL (REL shows the difference in amperes),
+  the bargraph and its labels, the high-voltage sign. The pages `Sd`, `tHI`, `tLo` and the MEM view show volts. The
+  Bluetooth frame carries the setting for the companion apps; the SD card log (page `In`, MEM held) writes the main
+  reading in A or mA with the same decimal point.
+- **Note:** the meter's own accuracy and range limits are those of the voltage reading; with a clamp the usable current
+  range is the voltage range divided by the setting.
 
 ## PT100 / PT1000 temperature sensors (Ω)
 

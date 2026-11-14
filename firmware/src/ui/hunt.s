@@ -10,6 +10,9 @@
 @ to it.  The unit signs of the range stay as the reading has them.  The BLE value 0x20007D70 is not changed.
 @ The page CHIrP (setup item 42, DIODE only, set/chirp.s, IMP-51) has the same layout: "CHIrP" on the sub display and its
 @ value (set_chirp_on) on the main display, drawn here in the same way.
+@ The page CLP (setup item 48, DCV, ACV, DCmV and ACmV, set/clp.s, IMP-68) is the other way round: its value (the clamp
+@ ratio) is on the sub display and ui_hunt_draw writes the name "  CLP" on the main display, so that the live voltage
+@ is not shown under the page.
 @
 @ Context: main only.
 @ =============================================================================
@@ -25,6 +28,7 @@
 
     .equ UI_HUNT_ITEM,        41            @ setup item of the page HUnt (set/setup.s SET_ITEM_HUNT)
     .equ UI_CHIRP_ITEM,       42            @ setup item of the page CHIrP (set/setup.s SET_ITEM_CHIRP)
+    .equ UI_CLP_ITEM,         48            @ setup item of the page CLP (set/setup.s SET_ITEM_CLP, set/clp.s)
     .equ ui_hunt_item,        v_20008037    @ setup item (set_item)
     .equ ui_hunt_ol,          v_20008046    @ overload flag
     .equ ui_hunt_commit_req,  v_2000805B    @ LCD commit request
@@ -34,6 +38,9 @@ ui_hunt_texts:
     .ascii "  oFF"                          @ value 0
     .ascii "   on"                          @ value 1
     .size ui_hunt_texts, . - ui_hunt_texts
+ui_clp_text:
+    .ascii "  CLP"                          @ the name of the page CLP (IMP-68)
+    .size ui_clp_text, . - ui_clp_text
 
     .section .text.ui.hunt, "ax", %progbits
 
@@ -49,11 +56,15 @@ ui_hunt_texts:
 FUNC ui_hunt_view
     ldr r0, =ui_hunt_item
     ldrb r0, [r0]
+    cmp r0, #UI_CLP_ITEM
+    beq 1f                                  @ IMP-68: the page CLP (item 48) takes the main digits for its name
     subs r0, r0, #UI_HUNT_ITEM              @ items 41 and 42 are next to each other
     cmp r0, #UI_CHIRP_ITEM - UI_HUNT_ITEM
     ite ls
     movls r0, #1
     movhi r0, #0
+    bx lr
+1:  movs r0, #1
     bx lr
 ENDFUNC ui_hunt_view
 
@@ -72,7 +83,11 @@ FUNC ui_hunt_draw
     bl ui_stats_text_prep                   @ main decimal point and minus sign off
     ldr r0, =ui_hunt_item
     ldrb r0, [r0]
-    cmp r0, #UI_CHIRP_ITEM
+    cmp r0, #UI_CLP_ITEM
+    bne 1f
+    ldr r1, =ui_clp_text                    @ IMP-68: the page CLP shows its name here, its ratio is on the sub display
+    b 2f
+1:  cmp r0, #UI_CHIRP_ITEM
     ite eq
     ldreq r0, =set_chirp_on                 @ page CHIrP
     ldrne r0, =set_hunt_on                  @ page HUnt
@@ -81,7 +96,7 @@ FUNC ui_hunt_draw
     add r0, r0, r0, lsl #2                  @ value * 5
     ldr r1, =ui_hunt_texts
     add r1, r1, r0
-    movs r0, #0                             @ main display
+2:  movs r0, #0                             @ main display
     bl lcd_draw_5char
     movs r0, #0
     ldr r1, =ui_hunt_ol

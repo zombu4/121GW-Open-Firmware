@@ -788,6 +788,44 @@ changed, ARS 7: "r5/r6 are row-bound ... those rows may not change").
   the service states, the beep and the symbol per type and voltage, the buzzer setting), `test_setup_walks.py`,
   `test_bft_settings.py`, `test_meter_api.py`.
 
+### 2.41 Current clamp mode (implemented, IMP-68, F-1.35; GitHub issue 39)
+- Request (GitHub issue 39): read a current clamp with a voltage output (a Hall clamp, a shunt with an amplifier) in the voltage
+  modes and see amperes.  Owner decisions 2026-11-13: the design below; the setting `1 V per A` as well; bits 7..5 of the free
+  EEPROM byte 0x020 for it.
+- Where: the SETUP page `CLP`, item 48, offered in DCV, ACV, DCmV and ACmV only (after `dSP`, before `Lt`).  The main display
+  shows the name `CLP` while the page is selected and the sub display shows the setting, right-aligned: `oFF` (default), `1`,
+  `10`, `100`, `1000`, the millivolts the clamp gives per ampere.  Long SETUP starts the edit (the sub display blinks), REL
+  steps up, PEAK steps down (wrapping), long SETUP saves, SETUP short leaves without a save, the edit timeout re-reads the EEPROM.
+- What is shown: the reading D keeps its counts and range; with a setting the main display shows the current of the clamp, the
+  volts divided by the setting.  The decimal point moves: with d the places of the voltage range (`decimal_position_for_mode_range`),
+  the places of the current are d' = d + k - 4 in DCV and ACV, d' = d + k - 1 in DCmV and ACmV (k = 1..4 for 1, 10, 100, 1000 mV
+  per A).  0 <= d' <= 4: the same digits with the point at d', unit A.  d' > 4: unit mA, the point at d' - 3.  d' < 0: the
+  current does not fit the five digits and the main display shows ` OFL ` (the meter's own overload text; the overload flag is not
+  set, the reading is valid).  The V sign is replaced by A (and the m of DCmV and ACmV by m for mA only); the AC / DC signs, the HV
+  sign, the bargraph and its labels, the sub display are as in the voltage mode.  Examples: DCV range 0 (d = 4) 0.2534 V at 10 mV per
+  A shows 25.34 A; DCmV range 1 (d = 2) 253.40 mV at 1 mV per A shows 253.40 A; DCmV range 0 (d = 3) 50.000 mV at 100 mV per A shows
+  500.00 mA; DCV range 3 (d = 1) at 1 mV per A shows ` OFL `.
+- What does not change: the measurement, the counts D, MIN/MAX, statistics, PEAK, the limit test and the BLE value 0x20007D70 stay in
+  volts.  REL shows the difference in amperes; HOLD keeps the amperes; REL in percent (`rEL-P`) shows the percent view, as in 2.3.  The
+  pages that take the main digits (`Sd`, `tHI`, `tLo`, `HUnt`, `CHIrP`, `CLP`) and the MEM view and calibration mode show volts.  Other
+  modes are not affected.
+- Bluetooth: byte 13 of the status frame 0xF2 carries the setting in bits 7..5 (0 off or a mode other than DCV, ACV, DCmV, ACmV;
+  1..4 = 1, 10, 100, 1000 mV per A), bits 4..0 as before; mode, range, counts, sign and overload bytes still describe the volts.  An
+  app computes d' and the unit by the rule above (old apps ignore the bits and show correct volts).  Remote setting id 0x020 now
+  carries the setting in bits 7..5 too (0..159; a PUT states the whole byte, so a value below 0x20 switches the clamp off; codes
+  5..7 are refused), SHOW 48 reaches the page in the four modes.
+- SD card (`log/csv.s`): with a setting the main reading of the four modes is written as a current: unit `A` or `mA` and the value
+  with d' places (mA: d' - 3); with d' < 0 the six digits of the counts followed by -d' zeros (the value in amperes as an integer);
+  the function column names the voltage mode, the sub readings are unchanged and the MAX and MIN rows follow the same rule.
+- How: `ui/clamp.s` (`ui_clamp_show` replaces `lcd_show_value_pos5_9` in the three draws of D in `ui/refresh.s` and the four held draws
+  of the REL key in `key/short.s`; `ui_clamp_point` for the point of a new range; `ui_clamp_kind` for the unit signs, applied by
+  `ui_relpct_mask` at every full commit), `set/clp.s` (the page), `ui/hunt.s` (the name on the main display), `set/relp.s` (load and
+  RAM copy `set_clamp_code`), `ble/packet.s` (byte 13), `log/csv.s` (`log_write_value_main`, `log_write_unit_main`).
+- Storage: bits 7..5 of 0x020 (EEPROM_MAP.md 4.1); 5..7 and an erased byte read as off; the other pages of the byte keep the bits.
+- Test: emulator `test_clamp.py` (the display, the point and the signs in the four modes at two ranges and all settings, the frame
+  byte, HOLD, REL, the page and its saves with the whole EEPROM compared, the log file), `test_bft_settings.py`, `test_setup_walks.py`,
+  `test_meter_api.py`.
+
 ## 3. EEPROM bytes the features need
 
 | Offset | Feature | Meaning | Default (0x00) | Word shared with | Status |
@@ -797,7 +835,7 @@ changed, ARS 7: "r5/r6 are row-bound ... those rows may not change").
 | 0x013 | 2.4 display | 0 level 1, 1 level 2 | level 1 | as 0x011 | approved, implemented |
 | 0x015 | 2.5 BLE | 0 2/s, 1 4/s, 2 10/s, 3 20/s | 2/s | 0x014 continuity code, 0x016 APO | approved, implemented |
 | 0x017 | 2.9 backlight | bits 6..0: 0 OFF, 1 30 s, 2..100 1..99 min; bit 7: on/off state | OFF, dark | as 0x015 | approved, implemented |
-| 0x020 | 2.3, 2.6, 2.12, 2.19 | bit 0 REL percent, bits 2..1 log trigger, bit 3 12-hour clock, bit 4 CAP anti-hunting | v2.05 | none (free word 0x020..0x023) | approved, implemented |
+| 0x020 | 2.3, 2.6, 2.12, 2.19, 2.41 | bit 0 REL percent, bits 2..1 log trigger, bit 3 12-hour clock, bit 4 CAP anti-hunting, bits 7..5 current clamp setting (0 off, 1..4 = 1, 10, 100, 1000 mV per A) | v2.05 | none (free word 0x020..0x023) | approved, implemented (bits 7..5 approved 2026-11-13) |
 | 0x021 | 2.13 continuity | hold code 0..3 (100 / 50 / 25 ms / off = 15 ms) | 100 ms | as 0x020 | approved, implemented (the limits of 2.1 are RAM only) |
 | 0x022 | 2.6 | change threshold 1..255 | 1 | as 0x020 | approved, implemented |
 | 0x023 | 2.40 battery type | 0 alkaline (warning below 4.1 V), 1 NiMH (below 4.7 V) | alkaline | as 0x020 | approved 2026-11-10, implemented |
@@ -841,6 +879,7 @@ forbids writing them, so they are not proposed. Items that need no byte: 2.7, th
 | 45 | `th` user continuity threshold (after `bH`) | BEEP mode with the code `DNUSr` or `UPUSr` only (IMP-64, F-1.33) | yes (implemented) |
 | 46 | `HY` user continuity hysteresis (after `th`) | as 45 | yes (implemented) |
 | 47 | `bAt` battery type (after the battery page 1, meter walk) | always; sub display `bAtAL` / `bAtnH` (IMP-67) | yes (implemented) |
+| 48 | `CLP` current clamp setting (after `dSP`) | DCV, ACV, DCmV and ACmV only; name on the main display, `oFF` / `1` / `10` / `100` / `1000` on the sub display (IMP-68, F-1.35) | yes (implemented) |
 | 32 | `n` count | MIN/MAX on | no |
 | 33 | `Sd` | MIN/MAX on | no |
 | 34, 35 | `tHI`, `tLo` | MIN/MAX on | no |
@@ -848,7 +887,7 @@ forbids writing them, so they are not proposed. Items that need no byte: 2.7, th
 Items 32..35 are the MIN/MAX pages. v2.05 uses 0..12 and 100; the page dispatcher falls back to item 0 for an unknown item
 (`fn_0801797C` end), so each new page needs its own branch before that fallback, as `.Lsd_port` does for items 20 to 25. Since
 IMP-52 (2.26) SETUP short steps two walks (`fn_08015410`).  Measurement: 0 -> 10..12 (the modes that have them) -> 22 -> 23
-(TEMP only) -> 24 -> 26 (BEEP only; then 45 -> 46 with a user code) / 37 (DCmA only) / 38 (OHM only) / 41 (CAP only) / 42 (DIODE only) -> 27 -> 28 -> 29 ->
+(TEMP only) -> 24 -> 26 (BEEP only; then 45 -> 46 with a user code) / 37 (DCmA only) / 38 (OHM only) / 41 (CAP only) / 42 (DIODE only) / 48 (DCV, ACV, DCmV, ACmV only) -> 27 -> 28 -> 29 ->
 36 (test on) -> 30 -> 31 (tr-Ch) -> 9 -> 32 -> 33 -> 34 -> 35 (MIN/MAX on) -> 43 -> 0.  Meter (long SETUP on 43): 1 -> 47 -> 2 -> ... ->
 8 -> 20 -> 21 -> 39 -> 40 (two-part bootloader only) -> 25 -> 0.  Each new page joins one of the two chains.
 

@@ -63,6 +63,9 @@ SCRIPTS = {
     # battery type page bAt, the low-battery limits, the power-on battery display and beep (IMP-67)
     'test_battery_type.py': ['firmware/src/pwr/', 'firmware/src/set/', 'firmware/src/ui/', 'firmware/src/bzb/',
                              'firmware/src/ble/', 'firmware/src/cal/bootwin.s', 'emulator/scripts/test_battery_trim.py'],
+    # current clamp mode: page CLP, the display in A / mA, frame byte 13, the log file (IMP-68); a card for the log file: CARD
+    'test_clamp.py': CARD + ['firmware/src/ui/', 'firmware/src/set/', 'firmware/src/ble/', 'firmware/src/log/',
+                              'firmware/src/key/', 'firmware/src/lcd/', 'firmware/src/mode/', 'emulator/scripts/test_log_trigger.py'],
     'test_buzzer_off.py': ['firmware/src/bzb/', 'firmware/src/mres/', 'firmware/src/pwr/', 'firmware/src/set/'],
     'test_heartbeat.py': CAREFUL,
     'test_power_pairs.py': ['firmware/src/cal/', 'firmware/src/pwr/', 'firmware/src/ui/'],

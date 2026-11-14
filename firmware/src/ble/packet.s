@@ -181,14 +181,17 @@ ENDFUNC fn_0800C5D2
 @ RAM      : reads acdc_active, ble_apo_disable, ble_bar_count, ble_bar_scale, ble_bar_value, ble_bat_low,
 @            ble_diode_15v, ble_enable, ble_item, ble_main_value, ble_ovl_latch, ble_temp_celsius, filter_1khz,
 @            meter_mode, meter_range, minmax_state, peak_hold, peak_show_min, rel_active, v_20007FE1, v_20007FE3,
-@            v_20007FE4, v_200080B1; writes ble_frame_b, ble_ring_idx, ble_ring_main, ble_xor
+@            v_20007FE4, v_200080B1; byte 13 bits 7..5: what ui_clamp_view reads (set_clamp_code, 0x2000808A, 0x20007FE4,
+@            set_item, set_relp); writes ble_frame_b, ble_ring_idx, ble_ring_main, ble_xor
 @ Spec     : analysis/ble_packet.md 3, 4, 5 (byte table, sub display, checksum)
 @ Deviation: OF-10: the frame is built in ble_frame_b, not in the transmit buffer, and marked complete
 @            (ble_frame_ready) only at the end; OF-34: marked complete only when ble_value_valid (the previous frame
 @            stays the last one sent)
 @ Note     : Byte 0 = 0xF2; bytes 1..4 date code and ID (fn_0800C53A); byte 5 mode and the top two magnitude bits;
 @            byte 6 range, overload, sign, temperature unit; bytes 7, 8 |value|; byte 9..12 sub display (switch on the
-@            setup item); byte 13 bar scale, sign; byte 14 bar segments; byte 15 status 1; byte 16 status 2; byte 17
+@            setup item); byte 13 bar scale, sign (bits 7..5: the current clamp ratio code, IMP-68: 0 off or the display is not
+@            the clamp view, 1..4 = 1, 10, 100, 1000 mV per A while modes 1..4 show it, ui_clamp_view, which an app applies
+@            to the volts it reads); byte 14 bar segments; byte 15 status 1; byte 16 status 2; byte 17
 @            status 3; byte 18 = XOR of bytes 0..17 (accumulator ble_xor).  The main value is also stored in the ring
 @            ble_ring_main (index ble_ring_idx, wraps at 1000).
 @ -----------------------------------------------------------------------------
@@ -410,6 +413,11 @@ FUNC build_status_packet_19b
     bne .L0800C7B0                          @ 0800C7AC  if ble_bar_scale != 3
     adds r5, #0x8                           @ 0800C7AE  r5 = r5 + 8
 .L0800C7B0:  @ reached from 0800C7AC bne (ble_bar_scale != 3)
+    ldr.w r0, =meter_mode
+    ldrb r0, [r0, #0x0]
+    bl ui_clamp_view                        @ IMP-68: r0 = the clamp ratio code 1..4 while the display shows the clamp view (modes
+                                            @ 1..4, not in calibration mode, MEM view, REL percent or on the page CLP), else 0
+    orr r5, r5, r0, lsl #5                  @ byte 13 bits 7..5 (unused by v2.05): 0 off, 1..4 = 1, 10, 100, 1000 mV per A
     ldr.w r0, =ble_frame_b                  @ 0800C7B0
     strb r5, [r0, #0xd]                     @ 0800C7B4  ble_frame_b+13 = r5
     ldr.w r0, =ble_bar_count                @ 0800C7B6
