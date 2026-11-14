@@ -53,6 +53,31 @@ TABLE = {
 from .settings import BEEP_TEXT  # noqa: E402
 
 
+# Current clamp (firmware F-1.35, GitHub issue 39; SETUP page CLP, EEPROM 0x020 bits 7..5): in DCV, ACV, DCmV and ACmV
+# the meter shows the clamp's voltage as current.  The frame keeps the volt counts, mode and range; byte [13] bits 7..5
+# carry the ratio code: 1 = 1 mV/A, 2 = 10 mV/A, 3 = 100 mV/A, 4 = 1 V/A (0: off).  The point moves by
+# CLAMP_SHIFT[code] places (volt modes; three fewer in the mV modes); more than 4 places after the point -> mA, fewer than
+# none -> the current does not fit the five digits and the meter shows its overload text OFL.
+CLAMP_SHIFT = {1: 3, 2: 2, 3: 1, 4: 0}
+CLAMP_MODES = (1, 2, 3, 4)
+
+
+def clamp_code(f, mode):
+    """The clamp ratio code of the frame (1..4), or 0 when the meter shows volts."""
+    code = (f[13] >> 5) & 7
+    return code if mode in CLAMP_MODES and code in CLAMP_SHIFT else 0
+
+
+def clamp_point(dp, mode, code):
+    """(digits after the point, unit) of a clamp reading, dp None when it does not fit the display (OFL)."""
+    shown = dp - (CLAMP_SHIFT[code] - (3 if mode in (3, 4) else 0))
+    if shown < 0:
+        return None, 'A'
+    if shown > 4:
+        return shown - 3, 'mA'
+    return shown, 'A'
+
+
 def _fixed(mag, dp):
     return ('%d' % mag) if dp == 0 else '%.*f' % (dp, mag / 10 ** dp)
 
@@ -67,10 +92,16 @@ def _main(f, mode, rng):
     dp, unit = rows[rng]
     if mode == 5:
         unit = '°C' if f[6] & 0x20 else '°F' if f[6] & 0x10 else ''
-    if f[6] & 0x80:                                     # overload: the meter shows " OFL " (M7); value bytes are stale
+    ovl = bool(f[6] & 0x80)                             # overload: the meter shows " OFL " (M7); value bytes are stale
+    if mag > 99999 and not ovl:                         # only through REL: the display shows trunc(D/10), dp - 1 (M6);
+        mag, dp = mag // 10, max(dp - 1, 0)             # first, as the clamp view moves this point (ui_clamp_dpos)
+    code = clamp_code(f, mode)
+    if code:
+        dp, unit = clamp_point(dp, mode, code)
+    if ovl:
         return 'OFL', None, unit, dp
-    if mag > 99999:                                     # only through REL: the display shows trunc(D/10), dp - 1 (M6)
-        mag, dp = mag // 10, max(dp - 1, 0)
+    if dp is None:                                      # clamp: the current does not fit the five digits, the meter
+        return 'OFL', None, unit, None                  # shows its overload text
     text = _fixed(mag, dp)
     value = mag / 10 ** dp
     if neg:
@@ -187,6 +218,6 @@ def decode(f, t):
     text, value, unit, dp = _main(f, mode, rng)
     label, sub_text, sub_unit = _sub(f, mode)
     return {'t': t, 'mode': mode, 'mode_name': MODES[mode] if mode < len(MODES) else 'mode %d' % mode, 'range': rng,
-            'text': text if text is not None else '-----', 'value': value, 'unit': unit, 'dp': dp,
+            'text': text if text is not None else '-----', 'value': value, 'unit': unit, 'dp': dp, 'clamp': clamp_code(f, mode),
             'overload': text == 'OFL', 'sub_label': label, 'sub_text': sub_text, 'sub_unit': sub_unit,
             'symbols': _symbols(f), 'bar': _bar(f), 'raw': f.hex()}

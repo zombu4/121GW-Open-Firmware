@@ -72,6 +72,16 @@ class PtMaths(unittest.TestCase):
 
 
 class RelLoopLimit(unittest.TestCase):
+    def test_rel_reference_void_when_the_clamp_ratio_changes(self):
+        d = derived.Derived()
+        a = dict(reading(1, 25.0, 'A'), clamp=2)                    # 0.25 V at 10 mV/A
+        d.feed(a)
+        d.feed(dict(reading(1, 0.0, 'A', ['REL']), clamp=2))
+        d.feed(dict(reading(1, 2.5, 'A', ['REL']), clamp=2))
+        self.assertAlmostEqual(d.snapshot()['rel_pct'], 10.0)
+        d.feed(dict(reading(1, 25.0, 'A', ['REL']), clamp=1))       # CLP 1 mV/A with REL on: the 25 A reference is void
+        self.assertIsNone(d.snapshot()['rel_pct'])
+
     def test_rel_percent(self):
         d = derived.Derived()
         d.feed(reading(1, 5.0, 'V'))

@@ -18,12 +18,14 @@ rotary memory, identity, calibration, restore and user zero; the table lists exa
 
 The id 0x020 is ONE id with a value 0..31 (0..15 before firmware F-1.16): bit 0 the REL view, bits 2..1 the logging
 trigger 0..2 (3 is refused), bit 3 the clock, bit 4 the capacitance anti-hunting (SETUP page HUnt, firmware F-1.16 and
-newer); bits 7..5 are 0.  The page shows it as four rows (REL view, trigger, clock, anti-hunting) with their own ids 0x120,
-0x220, 0x320, 0x420 (`id` of the state contract; `wire` is 0x020 for all four).  Changing one row is a read-modify-write on
+newer), bits 7..5 the current clamp ratio 0..4 (SETUP page CLP, firmware F-1.35 and newer, GitHub issue 39; 0 before).
+The page shows it as five rows (REL view, trigger, clock, anti-hunting, clamp) with their own ids 0x120, 0x220, 0x320,
+0x420, 0x520 (`id` of the state contract; `wire` is 0x020 for all five).  Changing one row is a read-modify-write on
 this side: GET, replace the row's bits, PUT the whole value, so the other rows keep what the meter reported.  If the meter's
 trigger bits read 3 (not valid) another row cannot be changed until the trigger is set (the meter would refuse the PUT).
 Firmware older than F-1.16 refuses a value above 15, so the anti-hunting row is neither listed nor changed for it
-(`Settings(client, hunt=False)`).
+(`Settings(client, hunt=False)`); firmware older than F-1.35 refuses a value above 31, so the clamp row is neither
+listed nor changed for it (`Settings(client, clamp=False)`).
 The answer's value is compared with what was sent, and the settings are read back.
 """
 import struct
@@ -98,6 +100,8 @@ TABLE = [
     _s(0x220, 'tr', 'Logging trigger', 0, 2, ['interval', 'on change', 'on limit verdict'], wire=B20, shift=1, mask=0x03),
     _s(0x320, 'CL', 'Clock', 0, 1, ['24 hour', '12 hour'], wire=B20, shift=3, mask=0x01),
     _s(0x420, 'HUnt', 'Capacitance anti-hunting', 0, 1, ['off', 'on'], wire=B20, shift=4, mask=0x01),
+    _s(0x520, 'CLP', 'Current clamp ratio (DCV, ACV, DCmV, ACmV show amps)', 0, 4,
+       ['off', '1 mV/A', '10 mV/A', '100 mV/A', '1 V/A'], wire=B20, shift=5, mask=0x07),   # F-1.35 on (IMP-68, issue 39)
     _s(0x021, 'bH', 'Continuity beep hold (BEEP)', 0, 3, ['100 ms', '50 ms', '25 ms', 'off (15 ms)']),
     _s(0x022, 'Ch', 'Logging change threshold', 1, 255, None),
     _s(0x023, 'bAt', 'Battery type', 0, 1, ['alkaline (4.1 V)', 'NiMH (4.7 V)']),   # F-1.34 on (IMP-67, issue 36; older firmware does not report it, so the row is not listed)
@@ -190,12 +194,13 @@ def item(s, raw):
 
 
 HUNT_ID = 0x420                                     # the anti-hunting row: firmware F-1.16 and newer only
+CLAMP_ID = 0x520                                    # the clamp row: firmware F-1.35 and newer only
 BUZZER_ID = 0x01E                                   # the buzzer row: its third value qUiEt, firmware F-1.24 and newer only
 CONT_ID = 0x014                                     # the continuity threshold: codes 16 and 17, firmware F-1.33 and newer only
 
 
 class Settings:
-    def __init__(self, client, hunt=True, quiet=True, paged=False, user_cont=True):
+    def __init__(self, client, hunt=True, quiet=True, paged=False, user_cont=True, clamp=True):
         """`hunt`: the meter's firmware knows the anti-hunting bit (F-1.16 or newer); without it the row HUnt is neither
         listed nor changed (older firmware refuses every value of id 0x020 above 15).  `quiet`: the firmware knows the
         buzzer's third value qUiEt (F-1.24 or newer); without it the buzzer row offers off and on only.  `paged`: the
@@ -203,17 +208,21 @@ class Settings:
         GET_PAGE_FIRST entries at first, halved after a page that did not arrive (down to 1), as the card list; one
         answer with every setting (68 bytes) rarely arrives intact on such a link.  `user_cont`: the firmware has the user
         continuity codes (F-1.33 or newer, IMP-64): GET and the PUT of the threshold use the two-byte forms; without it
-        the threshold row offers the codes 0..15 only and the rows th and HY are not listed."""
+        the threshold row offers the codes 0..15 only and the rows th and HY are not listed.  `clamp`: the firmware knows
+        the clamp ratio in bits 7..5 of id 0x020 (F-1.35 or newer); without it the row CLP is neither listed nor changed."""
         self.c = client
         self.hunt = hunt
         self.quiet = quiet
         self.paged = paged
         self.user_cont = user_cont
+        self.clamp = clamp
 
     def rows(self):
         out = []
         for s in TABLE:
             if s.id == HUNT_ID and not self.hunt:
+                continue
+            if s.id == CLAMP_ID and not self.clamp:
                 continue
             if s.id == BUZZER_ID and not self.quiet:
                 s = s._replace(max=1, choices=s.choices[:2])     # older firmware refuses the value 2
@@ -281,7 +290,10 @@ class Settings:
         raw = self.raw_all()
         if s.wire not in raw:
             raise card.CardError('the meter does not report %s' % s.code)
-        if s.wire == B20 and (raw[B20] > 31 or (s.code != 'tr' and (raw[B20] >> 1) & 3 == 3)):
+        # the firmware refuses a clamp code above 4 (F-1.35) or any bit above bit 4 (older): checked before the merge,
+        # except for CLP itself, whose merge replaces the code
+        if s.wire == B20 and ((s.id != CLAMP_ID and raw[B20] >> 5 > (4 if self.clamp else 0)) or
+                              (s.code != 'tr' and (raw[B20] >> 1) & 3 == 3)):
             raise card.CardError('%s: the meter reports the value 0x%02X of its shared setting, which it would refuse; '
                                  'set the logging trigger (tr) first' % (s.code, raw[B20]))
         send = merge(s, raw[s.wire], value)

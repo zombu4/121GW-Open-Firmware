@@ -168,20 +168,20 @@ class Derived:
             if not self._rel_on:                      # REL has just gone on: the reference is the reading before
                 self._rel_on = True
                 a = self._abs
-                self._ref = a if a and base and a[0] == base[0] and a[1] == base[1] else None
-            elif self._ref is not None and (base is None or self._ref[0] != base[0] or self._ref[1] != base[1]):
-                self._ref = None                      # mode or quantity changed while REL stayed on: reference void
+                self._ref = a if a and base and a[0] == base[0] and a[1] == base[1] and a[3] == base[3] else None
+            elif self._ref is not None and (base is None or self._ref[:2] != base[:2] or self._ref[3] != base[3]):
+                self._ref = None                      # mode, quantity or clamp ratio changed while REL stayed on: void
 
     @staticmethod
     def _base(r):
-        """(mode, quantity, value in base units) of a numeric reading, else None."""
+        """(mode, quantity, value in base units, clamp code) of a numeric reading, else None."""
         if r.get('value') is None:
             return None
         try:
             q, f = unit_scale(r.get('unit') or '')
         except ValueError:
             return None
-        return r['mode'], q, r['value'] * f
+        return r['mode'], q, r['value'] * f, r.get('clamp', 0)
 
     def snapshot(self):
         """state.derived for the page."""
@@ -196,7 +196,7 @@ class Derived:
                 out['limit'].update(lo=lim['lo'], hi=lim['hi'], unit=lim['unit'])
             if base is None:
                 return out
-            mode, quantity, v = base
+            mode, quantity, v, _ = base
             if rel and self._ref is not None and self._ref[2] != 0.0:
                 out['rel_pct'] = v / self._ref[2] * 100.0
             if mode in DC_CURRENT_MODES and not rel:
