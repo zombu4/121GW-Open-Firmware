@@ -74,6 +74,7 @@ EVENTS_KEEP = 300                                # events kept for the diagnosis
 BL_ASK_TRIES = 3                                 # bootloader questions (key code 0x92) until an answer counts as none
 DAILY = 86400.0                                  # update check "daily": seconds between two release checks
 HUNT_MIN_VERSION = (1, 1, 6)                     # firmware F-1.16: EEPROM 0x020 bit 4, the SETUP page HUnt (ble/bftset.s accepts 0..31)
+CLAMP_MIN_VERSION = (1, 3, 5)                    # firmware F-1.35: EEPROM 0x020 bits 7..5, the SETUP page CLP (issue 39)
 ADAPT_MIN_VERSION = (1, 2, 5)                    # firmware F-1.25: the reading rate for this power-on, settings in pages (IMP-55)
 QUIET_MIN_VERSION = (1, 2, 4)                    # firmware F-1.24: the buzzer's third value qUiEt (ble/bftset.s accepts 0..2)
 USER_CONT_MIN_VERSION = (1, 3, 3)                # firmware F-1.33: continuity codes 16, 17, settings 0x02D (two-byte) and 0x02F (IMP-64)
@@ -319,6 +320,12 @@ class Companion:
         capacitance anti-hunting, row HUnt); older firmware refuses the value."""
         v = releases.version_of_meter(self.version)
         return self.fw_kind == 'fast' and v is not None and v >= HUNT_MIN_VERSION
+
+    def _clamp_supported(self):
+        """True when the connected meter runs F-1.35 or newer: only that firmware takes bits 7..5 of the setting id 0x020
+        (the current clamp ratio, row CLP, GitHub issue 39); older firmware refuses the value."""
+        v = releases.version_of_meter(self.version)
+        return self.fw_kind == 'fast' and v is not None and v >= CLAMP_MIN_VERSION
 
     def _link_adapt_supported(self):
         """True when the connected meter runs F-1.25 or newer: the reading rate for this power-on (key codes 0x99..0x9C)
@@ -1337,7 +1344,8 @@ class Companion:
     def _settings_op(self, job):
         try:
             with self._ops('settings', wait=LINK_WAIT) as (_, client):
-                items = job(meter_settings.Settings(client, hunt=self._hunt_supported(), quiet=self._quiet_supported(),
+                items = job(meter_settings.Settings(client, hunt=self._hunt_supported(), clamp=self._clamp_supported(),
+                                                    quiet=self._quiet_supported(),
                                                     paged=self.small_pieces() and self._link_adapt_supported(),
                                                     user_cont=self._user_cont_supported()))
         except (RuntimeError, ValueError, OSError) as e:

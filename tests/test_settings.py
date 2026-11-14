@@ -25,12 +25,13 @@ class Table(unittest.TestCase):
             if s.choices:
                 self.assertEqual((s.min, s.max), (0, len(s.choices) - 1), s.code)
             self.assertLessEqual((s.mask << s.shift), 0xFF, s.code)
-        # bftset.s: 22 ids (0x023 F-1.34); 0x020 is one id shown as four rows (ids 0x120, 0x220, 0x320, 0x420); 0x018 is not offered
+        # bftset.s: 22 ids (0x023 F-1.34); 0x020 is one id shown as five rows (ids 0x120, 0x220, 0x320, 0x420, 0x520 the
+        # clamp of F-1.35); 0x018 is not offered
         self.assertEqual(sorted(s.wire for s in settings.TABLE),
                          sorted([0x00F, 0x010, 0x011, 0x013, 0x014, 0x015, 0x016, 0x017, 0x01A, 0x01B, 0x01E, 0x020, 0x020,
-                                 0x020, 0x020, 0x021, 0x022, 0x023, 0x028, 0x029, 0x02A, 0x02B, 0x02C, 0x02D, 0x02F]))
+                                 0x020, 0x020, 0x020, 0x021, 0x022, 0x023, 0x028, 0x029, 0x02A, 0x02B, 0x02C, 0x02D, 0x02F]))
         self.assertEqual({s.wire for s in settings.TABLE if s.wide}, {0x02D})
-        self.assertEqual({s.id for s in settings.TABLE if s.wire == 0x020}, {0x120, 0x220, 0x320, 0x420})
+        self.assertEqual({s.id for s in settings.TABLE if s.wire == 0x020}, {0x120, 0x220, 0x320, 0x420, 0x520})
         self.assertEqual({r: (s.min, s.max) for r, s in ((s.wire, s) for s in settings.TABLE if s.wire != 0x020)},
                          {r: v for r, v in RANGES.items() if r != 0x020})
 
@@ -260,8 +261,23 @@ class OverTheLink(unittest.TestCase):
         with self.assertRaises(card.CardError):
             settings.Settings(make_client(m), paged=True, user_cont=False).get_all()
 
-    def test_a_value_above_31_in_the_shared_byte_is_not_changed(self):
-        m = meter(b020=0x20)                            # bit 5 is no setting: the meter would refuse the whole value
+    def test_a_value_above_31_in_the_shared_byte_is_not_changed_before_f135(self):
+        m = meter(b020=0x20)                            # bits 7..5 are no setting before F-1.35: the meter would refuse it
+        s = settings.Settings(make_client(m), clamp=False)
+        with self.assertRaises(card.CardError):
+            s.put(0x420, 1)
+        self.assertEqual([t for t, _ in m.sent].count(settings.T_PUT), 0)
+
+    def test_the_clamp_code_stays_when_another_field_changes(self):
+        m = meter(b020=0x60)                            # clamp 100 mV/A (code 3)
+        s = settings.Settings(make_client(m))
+        s.put(0x420, 1)                                 # anti-hunting on: bit 4
+        self.assertEqual(m.eeprom[0x020], 0x70)
+        s.put(0x520, 0)                                 # clamp off
+        self.assertEqual(m.eeprom[0x020], 0x10)
+
+    def test_a_clamp_code_above_4_is_not_changed(self):
+        m = meter(b020=0xA0)                            # code 5: the meter would refuse the whole value
         s = settings.Settings(make_client(m))
         with self.assertRaises(card.CardError):
             s.put(0x420, 1)
