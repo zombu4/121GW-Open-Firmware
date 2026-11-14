@@ -68,7 +68,7 @@ SCRIPTS = {
     # current clamp mode: page CLP, the display in A / mA, frame byte 13, the log file (IMP-68); a card for the log file: CARD;
     # two jobs of its case groups (all in one job ran past the 2280 s limit on a hosted runner)
     'test_clamp.py --cases matrix,hold_rel,other_modes,csv': CLAMP,
-    'test_clamp.py --cases page,rel_beyond,byte13_gates,lamp_test': CLAMP,
+    'test_clamp.py --cases page,rel_beyond,byte13_gates,lamp_test,hold_beyond': CLAMP,
     'test_buzzer_off.py': ['firmware/src/bzb/', 'firmware/src/mres/', 'firmware/src/pwr/', 'firmware/src/set/'],
     'test_heartbeat.py': CAREFUL,
     'test_power_pairs.py': ['firmware/src/cal/', 'firmware/src/pwr/', 'firmware/src/ui/'],

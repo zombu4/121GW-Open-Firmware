@@ -3,7 +3,7 @@
     python -I emulator/scripts/test_clamp.py [--cases a,b,...] [image]      default every case, firmware/build/EEVBlog.bin
 
 Cases (each boots its own emulator): matrix (T1), hold_rel (T2), other_modes (T3), page (T4), csv (T5), rel_beyond (T6),
-byte13_gates (T7, T9), lamp_test (T8).  CI runs two jobs of this script at the same time, one per case group
+byte13_gates (T7, T9), lamp_test (T8), hold_beyond (T10).  CI runs two jobs of this script at the same time, one per case group
 (.github/scripts/plan_emulator_tests.py): all of them in one job ran past the 2280 s limit on a hosted runner (T1 11 min,
 T4 15 min, T5 7 min there).
 
@@ -31,6 +31,9 @@ not by the firmware's formula.
      and DCmV, as without one (ui_relpct_mask applies no view while ui_lamp_test is on)
   T9 REL in percent left with a ratio: the % sign goes out and the A sign is on (the change from the percent view to the clamp
      view requests the annunciator redraw)
+  T10 HOLD of a REL difference beyond 99999 (as T6), then the input to 0 V: the measurement goes on, REL does not apply under HOLD,
+     so D is the raw reading; the held digits and the unit signs stay (the unit follows the last drawn value, not D); HOLD off
+     draws the live reading and its unit
 RUN LIMIT: 1 run of this script.
 The helpers are those of test_backlight_timer.py and test_log_trigger.py.
 """
@@ -406,6 +409,43 @@ def rel_beyond(image):
         T.check('no unmodelled access, no safety violation', s['unmodelled'] == 0 and not s['safety'])
 
 
+def hold_beyond(image):
+    print('T10 HOLD of a REL difference beyond 99999: the unit signs stay with the held digits')
+    # As T6 (DCmV range 0 at 100 mV per A, REL on -53 mV then +53 mV and the mirror: "1.0600" A, m off), then HOLD and the input
+    # to 0 V: with HOLD the measurement still updates D (0x20007D64) but REL leaves it alone (fn_0800E594), so D is now the raw
+    # 0 counts, d' would be 3 + 3 - 1 = 5 (milliamperes, m on) while the held digits are those of D / 10 (A, 4 places).  The unit
+    # signs must not follow D while the digits are held; leaving HOLD draws the live reading and its unit again.
+    for base, now_ in ((-0.053, 0.053), (0.053, -0.053)):
+        e = T.make(image, {0x20: 0x60, EE_MV_MEMORY: 3})
+        e.command({'dial': 3})
+        e.advance(3.0)
+        e.command({'input': {'kind': 'V', 'value': base, 'ac': False}})
+        e.advance(4.0)
+        T.press(e, 'REL', gap=1.0)
+        e.command({'input': {'kind': 'V', 'value': now_, 'ac': False}})
+        e.advance(4.0)
+        counts = s32(e, ADDR_D)
+        T.check('REL on %+g V, then %+g V: D beyond 99999 (%d)' % (base, now_, counts), abs(counts) > 99999, 'D %d' % counts)
+        check_view(e, 'REL difference %+d counts at 100 mV/A' % counts, 3, 3)
+        held = look(e)                               # taken before HOLD: the next sample already makes D the raw reading
+        T.press(e, 'HOLD', gap=1.0)
+        e.command({'input': {'kind': 'V', 'value': 0.0, 'ac': False}})
+        e.advance(4.0)
+        T.check('the held digits are those of D / 10 (A, 4 places, m off)', held[1:] == (0, 1, 0) and abs(abs(float(held[0])) - 1.06) < 0.01,
+                'held %r' % (held,))
+        T.check('HOLD: the measurement went on (D is not the held difference, %d)' % s32(e, ADDR_D), abs(s32(e, ADDR_D)) <= 99999,
+                'D %d' % s32(e, ADDR_D))
+        now = look(e)
+        T.check('HOLD: the held digits and the unit signs stay (A on, V and m off)', now == held and now[1:] == (0, 1, 0)
+                and abs(abs(float(now[0])) - 1.06) < 0.01, 'held %r now %r' % (held, now))
+        T.press(e, 'HOLD', gap=1.0)                  # HOLD twice is auto-hold (stage 2), the third press ends both
+        T.press(e, 'HOLD', gap=1.0)
+        e.advance(4.0)
+        check_view(e, 'HOLD off: the live reading %+d counts in its own unit' % s32(e, ADDR_D), 3, 3)
+        s = e.snapshot()
+        T.check('no unmodelled access, no safety violation', s['unmodelled'] == 0 and not s['safety'])
+
+
 def byte13_gates(image):
     print('T7 byte 13 bits 7..5 only while the display shows the clamp view')
     e = T.make(image, {0x20: 0x40})                  # ratio code 2: 10 mV per A
@@ -511,7 +551,7 @@ def lamp_test(image):
 
 
 CASES = {'matrix': matrix, 'hold_rel': hold_rel, 'other_modes': other_modes, 'page': page, 'csv': csv,
-         'rel_beyond': rel_beyond, 'byte13_gates': byte13_gates, 'lamp_test': lamp_test}
+         'rel_beyond': rel_beyond, 'byte13_gates': byte13_gates, 'lamp_test': lamp_test, 'hold_beyond': hold_beyond}
 
 
 def run_tests(image, names=tuple(CASES)):

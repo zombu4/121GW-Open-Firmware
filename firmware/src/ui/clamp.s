@@ -22,7 +22,10 @@
 @ shown in percent (ui_relpct_view comes first: a percent of the current is the percent of the voltage).  The pages that take
 @ the main digits (Sd, tHI, tLo, HUnt, CHIrP, CLP) and the loop and RTD views are drawn before it (fn_08016E08).
 @ The decimal point of the digits is one rule for the draw and the unit signs: ui_clamp_dpos (D / 10 of a REL difference
-@ beyond 99999 has one digit after the point fewer, so d' and the unit kind follow it).  ble/packet.s sends the code of
+@ beyond 99999 has one digit after the point fewer, so d' and the unit kind follow it).  The unit kind is taken from the last
+@ drawn value 0x20007D70, not from the live reading D (0x20007D64): HOLD keeps the digits (nothing is drawn, 0x20007D70 stays)
+@ while the measurement goes on and REL no longer applies to D, so the live D can be another size than the held digits.
+@ ble/packet.s sends the code of
 @ ui_clamp_view, so byte 13 carries it only while the clamp view is shown.
 @
 @ Context: main only.
@@ -39,8 +42,7 @@
     .equ ui_clamp_cal,        v_2000808A    @ calibration mode (the view is off)
     .equ ui_clamp_mem,        v_20007FE4    @ MEM view (the view is off)
     .equ ui_clamp_dp,         v_2000803F    @ decimal point code d of the displayed range (0..4)
-    .equ ui_clamp_reading,    v_20007D64    @ displayed reading D (signed counts), the value fn_08016E08 draws
-    .equ ui_clamp_last_drawn, v_20007D70    @ last drawn main value, the BLE value
+    .equ ui_clamp_last_drawn, v_20007D70    @ last drawn main value (signed counts): the digits on the display, the BLE value
     .equ UI_CLAMP_KIND_A,     1             @ ui_clamp_calc kind: amperes
     .equ UI_CLAMP_KIND_MA,    2             @ ui_clamp_calc kind: milliamperes
     .equ UI_CLAMP_KIND_OFL,   3             @ ui_clamp_calc kind: does not fit the display
@@ -170,9 +172,14 @@ ENDFUNC ui_clamp_view
 @ Out      : r0 = 0 the view is not shown, 3 amperes (the overload text included), 4 milliamperes (the codes of ui_relpct_mask)
 @ Clobbers : r1-r3, r12, flags (AAPCS)
 @ Context  : main only
-@ RAM      : reads meter_mode, 0x2000803F, 0x20007D64
-@ Note     : the point position is that of the digits (ui_clamp_dpos of the displayed reading: one less for D / 10), so the
-@            unit kind, the point and the digits come from one d
+@ RAM      : reads meter_mode, 0x2000803F, 0x20007D70
+@ Note     : the point position is that of the digits (ui_clamp_dpos of the value last drawn: one less for D / 10), so the
+@            unit kind, the point and the digits come from one d.  The value is the last drawn one (0x20007D70, which every draw
+@            of the digits sets and which HOLD, that skips the draw, leaves), not the live reading D (0x20007D64): while HOLD
+@            keeps the digits, D goes on with the raw measurement (REL does not apply under HOLD, fn_0800E594), and its size
+@            would change the unit (D / 10 beyond 99999: A at one place fewer, the raw D within 99999: mA) under the held digits.
+@            The range point 0x2000803F and the mode do not change under HOLD (RANGE is refused, autorange is frozen, a mode
+@            change ends HOLD), and leaving HOLD or a setting change redraws, which sets 0x20007D70 again.
 @ -----------------------------------------------------------------------------
 FUNC ui_clamp_kind
     push {r4, lr}
@@ -181,8 +188,8 @@ FUNC ui_clamp_kind
     mov r0, r4
     bl ui_clamp_view
     cbz r0, 1f                              @ not shown: 0
-    ldr r0, =ui_clamp_reading
-    ldr r0, [r0]                            @ D, the displayed reading
+    ldr r0, =ui_clamp_last_drawn
+    ldr r0, [r0]                            @ the value last drawn on the main digits (the held one under HOLD)
     bl ui_clamp_dpos                        @ r0 = d of the digits (d - 1 when D / 10 is drawn)
     mov r1, r0
     mov r0, r4
